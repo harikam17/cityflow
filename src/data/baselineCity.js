@@ -1,99 +1,95 @@
 /**
- * SIMULATED / MODELLED BASELINE CITY DATA
+ * BENGALURU BASELINE CITY DATA
  * 
- * NOTICE:
- * All figures, capacities, and geographic bounds in this dataset are calibrated engineering models
- * designed strictly for educational and scenario-simulation purposes.
- * They do NOT represent live, empirical, or official municipal measurements.
+ * Sources:
+ * 1. Passenger mobility, demographics, and modal split:
+ *    "Bengaluru Mobility Indicators dataset" (data/bengaluru-mobility-indicators.csv)
+ * 2. Infrastructure capacity, freight volume, and solid waste metrics:
+ *    Calibrated urban simulation engineering models (Explicitly Modelled).
  */
 
+import { BENGALURU_MOBILITY_DATASET, deriveZoneMobility } from './bengaluruMobilityData.js';
+
 export const SIMULATED_CITY_METADATA = {
-  cityName: "Simulated Metro Sector (Grid 26)",
-  coordinateReference: "12.9716° N, 77.5946° E (Reference Datum)",
-  modelScale: "Metropolitan District",
+  cityName: "Bengaluru Metropolitan Region (BBMP Zones)",
+  coordinateReference: "12.9716° N, 77.5946° E (Bengaluru City Datum)",
+  dataSource: "Bengaluru Mobility Indicators dataset (Empirical Mobility) + Calibrated Infrastructure Models",
   baselineTimestamp: "2026-Q3 Model Calibrated"
+};
+
+// Find matching mobility record by zone name
+const getMobilityData = (name) => {
+  const record = BENGALURU_MOBILITY_DATASET.find(z => z.zoneName === name);
+  return record ? deriveZoneMobility(record) : null;
 };
 
 export const BASELINE_ZONES = [
   {
-    id: "zone-cbd",
-    name: "Central Business District",
-    type: "Commercial & Office Core",
-    description: "High-density commercial core with peak office commuter inflow and restricted delivery windows.",
-    center: [12.9735, 77.5985],
+    id: "zone-east",
+    name: "Bangalore East",
+    type: "Commercial Core & Office Corridor (MG Road / Indiranagar)",
+    description: "Major commercial, retail, and office core with high transit ridership and dense commuter inflows.",
+    center: [12.9784, 77.6190],
     polygon: [
-      [12.9800, 77.5900],
-      [12.9800, 77.6070],
-      [12.9670, 77.6070],
-      [12.9670, 77.5900]
+      [12.9920, 77.5980],
+      [12.9920, 77.6400],
+      [12.9650, 77.6400],
+      [12.9650, 77.5980]
     ],
-    // Calibrated baseline capacities and demands (Simulated rates)
-    roadCapacityVehiclesPerHour: 22000,
-    baselinePrivateVehiclesPerHour: 11500,
-    baselineCommercialVehiclesPerHour: 2000,
-    transitDailyCapacityTrips: 60000,
-    baselineTransitRidership: 45000,
-    freightDemandTonnesPerDay: 850,
-    freightFleetCapacityTonnesPerDay: 1800,
-    wasteGenerationTonnesPerDay: 380,
-    wasteCollectionCapacityTonnesPerDay: 800
+    // Empirical Mobility from CSV (Bengaluru Mobility Indicators dataset)
+    mobility: getMobilityData("Bangalore East"),
+
+    // Calibrated Simulation Engine Parameters (MODELLED)
+    roadCapacityVehiclesPerHour: 22000,       // Modelled road lane throughput capacity
+    baselinePrivateVehiclesPerHour: 11500,    // Modelled peak hourly private vehicles
+    baselineCommercialVehiclesPerHour: 2000,  // Modelled commercial delivery vehicles
+    transitDailyCapacityTrips: 60000,         // Modelled transit system service capacity
+    baselineTransitRidership: 45000,          // Modelled transit ridership demand
+    freightDemandTonnesPerDay: 850,           // Modelled commercial freight demand
+    freightFleetCapacityTonnesPerDay: 1800,   // Modelled logistics fleet capacity
+    wasteGenerationTonnesPerDay: 380,         // Modelled municipal solid waste generation
+    wasteCollectionCapacityTonnesPerDay: 800  // Modelled collection fleet capacity
   },
   {
-    id: "zone-industrial-hub",
-    name: "Industrial Logistics Hub",
-    type: "Freight & Heavy Industrial",
-    description: "Primary freight redistribution center, warehousing district, and manufacturing corridor.",
-    center: [12.9920, 77.5520],
+    id: "zone-west",
+    name: "Bangalore West",
+    type: "Major Intermodal Transit Core (Majestic / Rajajinagar)",
+    description: "Primary multi-modal transit exchange hub with intense bus, rail, and metro passenger movement.",
+    center: [12.9850, 77.5530],
     polygon: [
-      [13.0050, 77.5400],
-      [13.0050, 77.5650],
-      [12.9800, 77.5650],
-      [12.9800, 77.5400]
+      [13.0000, 77.5350],
+      [13.0000, 77.5750],
+      [12.9700, 77.5750],
+      [12.9700, 77.5350]
     ],
-    roadCapacityVehiclesPerHour: 18000,
-    baselinePrivateVehiclesPerHour: 4500,
-    baselineCommercialVehiclesPerHour: 5500,
-    transitDailyCapacityTrips: 24000,
-    baselineTransitRidership: 14000,
-    freightDemandTonnesPerDay: 3200,
-    freightFleetCapacityTonnesPerDay: 5600,
-    wasteGenerationTonnesPerDay: 620,
-    wasteCollectionCapacityTonnesPerDay: 1300
+    mobility: getMobilityData("Bangalore West"),
+
+    // Calibrated Simulation Engine Parameters (MODELLED)
+    roadCapacityVehiclesPerHour: 17500,
+    baselinePrivateVehiclesPerHour: 8400,
+    baselineCommercialVehiclesPerHour: 2600,
+    transitDailyCapacityTrips: 90000,
+    baselineTransitRidership: 72000,
+    freightDemandTonnesPerDay: 1350,
+    freightFleetCapacityTonnesPerDay: 2900,
+    wasteGenerationTonnesPerDay: 460,
+    wasteCollectionCapacityTonnesPerDay: 1050
   },
   {
-    id: "zone-tech-corridor",
-    name: "Tech Corridor",
-    type: "Suburban Technology Park",
-    description: "High-volume office corridor with heavy ride-hail, shuttle traffic, and parcel deliveries.",
-    center: [12.9280, 77.6830],
+    id: "zone-south",
+    name: "Bangalore South",
+    type: "High-Density Mixed Residential (Jayanagar / JP Nagar)",
+    description: "Established compact residential neighborhood with high population density and municipal waste generation.",
+    center: [12.9250, 77.5850],
     polygon: [
-      [12.9420, 77.6650],
-      [12.9420, 77.7020],
-      [12.9140, 77.7020],
-      [12.9140, 77.6650]
+      [12.9450, 77.5650],
+      [12.9450, 77.6100],
+      [12.9050, 77.6100],
+      [12.9050, 77.5650]
     ],
-    roadCapacityVehiclesPerHour: 19000,
-    baselinePrivateVehiclesPerHour: 11200,
-    baselineCommercialVehiclesPerHour: 1800,
-    transitDailyCapacityTrips: 45000,
-    baselineTransitRidership: 28000,
-    freightDemandTonnesPerDay: 950,
-    freightFleetCapacityTonnesPerDay: 2400,
-    wasteGenerationTonnesPerDay: 320,
-    wasteCollectionCapacityTonnesPerDay: 850
-  },
-  {
-    id: "zone-residential-high-density",
-    name: "High-Density Residential",
-    type: "Mixed Residential & Local Retail",
-    description: "Compact residential neighborhood with high municipal solid waste generation and grocery e-commerce loads.",
-    center: [12.9350, 77.6180],
-    polygon: [
-      [12.9500, 77.6050],
-      [12.9500, 77.6320],
-      [12.9200, 77.6320],
-      [12.9200, 77.6050]
-    ],
+    mobility: getMobilityData("Bangalore South"),
+
+    // Calibrated Simulation Engine Parameters (MODELLED)
     roadCapacityVehiclesPerHour: 15000,
     baselinePrivateVehiclesPerHour: 6800,
     baselineCommercialVehiclesPerHour: 1400,
@@ -105,25 +101,53 @@ export const BASELINE_ZONES = [
     wasteCollectionCapacityTonnesPerDay: 1050
   },
   {
-    id: "zone-transit-hub",
-    name: "Major Transit Hub",
-    type: "Intermodal Terminal & Rail Exchange",
-    description: "Multi-modal rail, bus, and metro interchange with dense pedestrian and feeder vehicle circulation.",
-    center: [12.9780, 77.5700],
+    id: "zone-mahadevapura",
+    name: "Mahadevapura",
+    type: "Technology Park Corridor (Whitefield / ORR)",
+    description: "High-volume suburban technology hub with heavy commuter shuttle traffic and e-commerce parcel loads.",
+    center: [12.9700, 77.7100],
     polygon: [
-      [12.9880, 77.5600],
-      [12.9880, 77.5820],
-      [12.9680, 77.5820],
-      [12.9680, 77.5600]
+      [12.9900, 77.6800],
+      [12.9900, 77.7400],
+      [12.9500, 77.7400],
+      [12.9500, 77.6800]
     ],
-    roadCapacityVehiclesPerHour: 17500,
-    baselinePrivateVehiclesPerHour: 8400,
-    baselineCommercialVehiclesPerHour: 2600,
-    transitDailyCapacityTrips: 90000,
-    baselineTransitRidership: 72000,
-    freightDemandTonnesPerDay: 1350,
-    freightFleetCapacityTonnesPerDay: 2900,
-    wasteGenerationTonnesPerDay: 460,
-    wasteCollectionCapacityTonnesPerDay: 1050
+    mobility: getMobilityData("Mahadevapura"),
+
+    // Calibrated Simulation Engine Parameters (MODELLED)
+    roadCapacityVehiclesPerHour: 19000,
+    baselinePrivateVehiclesPerHour: 11200,
+    baselineCommercialVehiclesPerHour: 1800,
+    transitDailyCapacityTrips: 45000,
+    baselineTransitRidership: 28000,
+    freightDemandTonnesPerDay: 950,
+    freightFleetCapacityTonnesPerDay: 2400,
+    wasteGenerationTonnesPerDay: 320,
+    wasteCollectionCapacityTonnesPerDay: 850
+  },
+  {
+    id: "zone-bommanahalli",
+    name: "Bommanahalli",
+    type: "Industrial & Freight Hub (Electronic City / HSR)",
+    description: "Major freight logistics corridor, manufacturing zone, and southern technology distribution hub.",
+    center: [12.9080, 77.6320],
+    polygon: [
+      [12.9300, 77.6100],
+      [12.9300, 77.6600],
+      [12.8800, 77.6600],
+      [12.8800, 77.6100]
+    ],
+    mobility: getMobilityData("Bommanahalli"),
+
+    // Calibrated Simulation Engine Parameters (MODELLED)
+    roadCapacityVehiclesPerHour: 18000,
+    baselinePrivateVehiclesPerHour: 4500,
+    baselineCommercialVehiclesPerHour: 5500,
+    transitDailyCapacityTrips: 24000,
+    baselineTransitRidership: 14000,
+    freightDemandTonnesPerDay: 3200,
+    freightFleetCapacityTonnesPerDay: 5600,
+    wasteGenerationTonnesPerDay: 620,
+    wasteCollectionCapacityTonnesPerDay: 1300
   }
 ];

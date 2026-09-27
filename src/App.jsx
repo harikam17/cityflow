@@ -6,6 +6,7 @@ import CityMap from './components/CityMap';
 import ZoneDetailsModal from './components/ZoneDetailsModal';
 import ScenarioImpact from './components/ScenarioImpact';
 import Recommendations from './components/Recommendations';
+import DataProvenance from './components/DataProvenance';
 import { BASELINE_ZONES, SIMULATED_CITY_METADATA } from './data/baselineCity';
 import { calculateCitySimulation } from './engine/simulationEngine';
 import { generatePolicyRecommendations } from './engine/recommendations';
@@ -59,11 +60,11 @@ export default function App() {
       <Header />
 
       <main className="main-content">
-        {/* Modelled Environment Notice */}
+        {/* Modelled Environment & Data Provenance Notice */}
         <div className="disclaimer-banner" role="region" aria-label="Simulation notice">
-          <span className="badge badge-info">SIMULATED ENVIRONMENT</span>
+          <span className="badge badge-info">BENGALURU MOBILITY BASELINE</span>
           <span className="disclaimer-text">
-            <strong>Simulation data:</strong> Baseline inputs are calibrated engineering models for scenario demonstration and are not live municipal measurements ({SIMULATED_CITY_METADATA.cityName}).
+            <strong>Source: bengaluru-mobility-indicators.csv</strong> — Passenger mobility indicators are based on the supplied dataset. Road, freight, waste and map geometry inputs remain modelled unless separately sourced ({SIMULATED_CITY_METADATA.cityName}).
           </span>
         </div>
 
@@ -103,7 +104,11 @@ export default function App() {
 
         {/* Phase 4: Rule-Based Policy Recommendations */}
         <Recommendations recommendations={recommendations} />
+
+        {/* Real Data Provenance & Model Separation Section */}
+        <DataProvenance />
       </main>
     </div>
   );
 }
+

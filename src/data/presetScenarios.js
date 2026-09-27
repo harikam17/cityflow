@@ -35,7 +35,7 @@ export const PRESET_SCENARIOS = [
       privateVehicleModifier: 1.45,
       publicTransitModifier: 0.5,
       deliveryFreightModifier: 1.1,
-      closedCorridorId: "corridor-cbd-north"
+      closedCorridorId: "corridor-east-central"
     }
   },
   {
@@ -52,6 +52,6 @@ export const PRESET_SCENARIOS = [
 ];
 
 export const AVAILABLE_CORRIDORS = [
-  { id: "corridor-cbd-north", name: "CBD North Arterial Flyover" },
-  { id: "corridor-ind-freight", name: "Industrial Freight Express Lane" }
+  { id: "corridor-east-central", name: "East-Central Arterial Flyover" },
+  { id: "corridor-tech-orr", name: "Mahadevapura Outer Ring Road Express Lane" }
 ];

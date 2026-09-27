@@ -35,8 +35,8 @@ export const MODEL_COEFFICIENTS = {
 
 // Corridor to Zone mapping
 export const CORRIDOR_ZONE_MAPPING = {
-  'corridor-cbd-north': ['zone-cbd', 'zone-transit-hub'],
-  'corridor-ind-freight': ['zone-industrial-hub']
+  'corridor-east-central': ['zone-east', 'zone-west'],
+  'corridor-tech-orr': ['zone-mahadevapura']
 };
 
 /**
@@ -183,12 +183,13 @@ export function calculateZoneSimulation(zone, scenario = {}) {
     center: zone.center,
     polygon: zone.polygon,
     description: zone.description,
+    mobility: zone.mobility || null,
     // Calculated pressure indices (0 - 100)
     trafficPressure: Number(trafficPressure.toFixed(1)),
     logisticsPressure: Number(logisticsPressure.toFixed(1)),
     wastePressure: Number(wastePressure.toFixed(1)),
     overallPressure: Number(overallPressure.toFixed(1)),
-    // Internal operational demand and capacity variables
+    // Internal operational demand and capacity variables (Modelled/Calibrated)
     trafficDemand: Math.round(effectiveTrafficDemand),
     roadCapacity: Math.round(effectiveRoadCapacity),
     deliveryDemand: Math.round(zone.freightDemandTonnesPerDay * deliveryFreightModifier),
