@@ -7,8 +7,6 @@ during a festival, and CityFlow shows which of the 8 BBMP zones go over capacity
 smallest change to each lever that fixes the problem, in units a planner can act on: *"about 1,979 TPD of
 new processing capacity"*, *"move 30% of deliveries to night hours"*.
 
-**Live demo:** https://harikam17.github.io/cityflow/ *(after GitHub Pages is enabled, see below)*
-
 ## Why it can be trusted
 
 - **Built from public data.** Sources: 2011 census wards, the Comprehensive Mobility Plan 2020 (CMP), OpenStreetMap
@@ -53,11 +51,6 @@ npm run build      # production bundle in dist/
 ```
 
 Rebuilding the dataset needs Python 3: `pip install -r scripts/dataset/requirements.txt && npm run build:data`.
-
-## Deploying
-
-`.github/workflows/deploy.yml` publishes to GitHub Pages on every push to `main`. A repo admin enables it
-once: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
 
 ## Learn more
 
