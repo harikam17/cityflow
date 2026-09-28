@@ -1,0 +1,4826 @@
+{
+ "meta": {
+  "city": "Bengaluru (BBMP, 8 zones as delimited in 2022)",
+  "baseYear": 2025,
+  "generatedBy": "scripts/dataset/build_dataset.py",
+  "sources": [
+   {
+    "id": "mobility-csv",
+    "name": "Bengaluru Mobility Indicators (zone population, jobs, trip rate, mode share)",
+    "file": "data/bengaluru-mobility-indicators.csv",
+    "year": "2011 census population; 2008-era household survey"
+   },
+   {
+    "id": "bbmp-zones",
+    "name": "BBMP Zone Boundaries 2022",
+    "url": "https://data.opencity.in/dataset/bbmp-ward-information",
+    "year": "2022"
+   },
+   {
+    "id": "osm",
+    "name": "OpenStreetMap road network (ODbL)",
+    "url": "https://www.openstreetmap.org",
+    "year": "2026 extract"
+   },
+   {
+    "id": "irc106",
+    "name": "IRC:106-1990 Guidelines for Capacity of Urban Roads in Plain Areas",
+    "year": "1990"
+   },
+   {
+    "id": "cmp2020",
+    "name": "Comprehensive Mobility Plan for Bengaluru (DULT)",
+    "url": "https://dult.karnataka.gov.in/assets/front/pdf/Comprehensive_Mobility_Plan.pdf",
+    "year": "2020"
+   },
+   {
+    "id": "cttp",
+    "name": "Comprehensive Traffic & Transportation Plan for Bangalore (RITES), Ch. 3",
+    "url": "https://data.opencity.in",
+    "year": "c. 2010"
+   },
+   {
+    "id": "bmrcl",
+    "name": "BMRCL station-hourly ridership (RTI)",
+    "url": "https://github.com/Vonter/bmrcl-ridership-hourly",
+    "year": "Aug-Sep 2025 (48 days)"
+   },
+   {
+    "id": "wikidata",
+    "name": "Wikidata metro station coordinates",
+    "url": "https://query.wikidata.org",
+    "year": "2026"
+   },
+   {
+    "id": "bbmp-waste",
+    "name": "BBMP Segregated Waste Collections Apr-May 2020",
+    "url": "https://data.opencity.in/dataset/bbmp-solid-waste-management-data",
+    "year": "2020"
+   },
+   {
+    "id": "bbmp-plants",
+    "name": "BBMP Waste Processing Plants",
+    "url": "https://data.opencity.in/dataset/bbmp-solid-waste-management-data",
+    "year": "c. 2019"
+   }
+  ]
+ },
+ "constants": {
+  "occupancy": {
+   "twoWheeler": 1.5,
+   "carVan": 2.3,
+   "auto": 1.8,
+   "taxi": 2.3,
+   "bus": 37.5
+  },
+  "pcu": {
+   "twoWheeler": 0.5,
+   "carVan": 1.0,
+   "auto": 1.2,
+   "taxi": 1.0,
+   "bus": 2.2,
+   "lcv": 1.4,
+   "truck": 2.2
+  },
+  "bmtcFleet": 6143,
+  "observedPeakSpeedKmph": {
+   "private": 11,
+   "publicTransport": 8
+  },
+  "goodsVehicleShare": {
+   "truck": 0.049,
+   "lcv": 0.035
+  },
+  "inboundGoodsVehiclesPerDay": {
+   "lcv": 8450,
+   "truck": 17740,
+   "mav": 4019
+  },
+  "assumptions": {
+   "peakHourFactor": {
+    "value": 0.1,
+    "basis": "Share of daily trips in the peak hour; Indian metro planning range 8-11% (CTTP/CMP practice)."
+   },
+   "peakDirectionShare": {
+    "value": 0.6,
+    "basis": "60:40 directional split in the peak hour (standard design practice); peak-direction lanes carry 60% of flow on 50% of lanes."
+   },
+   "majorRoadVehicleKmShare": {
+    "value": 0.7,
+    "basis": "Share of peak vehicle-km carried on the arterial / sub-arterial / expressway network; collectors and local streets carry the access legs of trips."
+   },
+   "freeFlowSpeedKmph": {
+    "value": 40,
+    "basis": "Free-flow speed on urban arterials (IRC:106 design speeds 50-60 km/h, reduced for signal density)."
+   },
+   "bprBeta": {
+    "value": 2,
+    "basis": "Delay-curve exponent for signal-controlled urban networks, where delay grows closer to linearly with load than on uninterrupted highways (the original BPR value of 4)."
+   },
+   "tripEndSplit": {
+    "value": 0.5,
+    "basis": "Each trip loads roads at both ends: half of peak vehicle-km is assigned by residents (trip productions), half by jobs (trip attractions)."
+   },
+   "busPeakSpeedKmph": {
+    "value": 8,
+    "basis": "CMP 2020 observed public-transport peak journey speed (measured value reused as bus operating speed)."
+   },
+   "transitServiceElasticity": {
+    "value": 0.5,
+    "basis": "Ridership elasticity to service frequency of about +0.5 (TCRP Report 95, Ch. 9)."
+   },
+   "payloadTonnes": {
+    "value": {
+     "lcv": 2.0,
+     "truck": 9.0,
+     "mav": 20.0
+    },
+    "basis": "Typical rated payloads for Indian LCV, 2-axle truck and multi-axle vehicle."
+   },
+   "loadFactor": {
+    "value": 0.6,
+    "basis": "Average laden share of goods-vehicle capacity including empty backhauls."
+   },
+   "freightFleetUtilisation": {
+    "value": 0.75,
+    "basis": "Freight fleet sized to run at 75% utilisation under city-average baseline congestion (no public fleet-capacity data)."
+   },
+   "travelShareOfCycleTime": {
+    "value": 0.5,
+    "basis": "Half of a delivery / waste-collection cycle is driving; the rest is loading, unloading and handling. Congestion scales only the driving half."
+   },
+   "wasteProcessingCapacityTpd": {
+    "value": 2750,
+    "basis": "BBMP operational processing plants ('old sites') per BBMP plant list; 2,300 TPD of listed new sites excluded as commissioning status is unverified."
+   },
+   "overallWeights": {
+    "value": {
+     "traffic": 0.4,
+     "logistics": 0.3,
+     "waste": 0.3
+    },
+    "basis": "Composite index weights; policy choice, not data."
+   }
+  },
+  "calibration": {
+   "bprAlpha": 2.1472,
+   "targetTravelTimeIndex": 3.636,
+   "method": "alpha solved so the demand-weighted mean zone travel-time index equals free-flow speed / CMP 2020 observed peak speed (40 / 11 km/h)."
+  }
+ },
+ "city": {
+  "populationBaseYear": 9701539,
+  "metroDailyBoardings": 704956,
+  "metroStationsUnmatched": [
+   "Singayyanapalya"
+  ],
+  "freightDemandTpd": 154164,
+  "wasteCollectedTpdMay2020": 3766.0,
+  "busPeakBusKmPerHr": 49144,
+  "goodsPeakVehicles": 32373
+ },
+ "corridors": [
+  {
+   "id": "corridor-orr",
+   "name": "Outer Ring Road",
+   "zones": {
+    "zone-west": 13735.0,
+    "zone-east": 34007.6,
+    "zone-south": 55553.5,
+    "zone-yelahanka": 26321.2,
+    "zone-mahadevapura": 88113.6,
+    "zone-bommanahalli": 19344.0,
+    "zone-rrnagar": 76412.6
+   }
+  },
+  {
+   "id": "corridor-hosur",
+   "name": "Hosur Road (NH 44 south)",
+   "zones": {
+    "zone-east": 8667.5,
+    "zone-south": 19751.1,
+    "zone-bommanahalli": 41108.9
+   }
+  },
+  {
+   "id": "corridor-bellary",
+   "name": "Bellary Road (NH 44 north)",
+   "zones": {
+    "zone-west": 11369.7,
+    "zone-east": 19061.0,
+    "zone-yelahanka": 67603.3
+   }
+  },
+  {
+   "id": "corridor-tumkur",
+   "name": "Tumkur Road (NH 48)",
+   "zones": {
+    "zone-west": 11222.4,
+    "zone-yelahanka": 698.9,
+    "zone-rrnagar": 35061.1,
+    "zone-dasarahalli": 28123.6
+   }
+  },
+  {
+   "id": "corridor-mysore",
+   "name": "Mysore Road",
+   "zones": {
+    "zone-west": 28422.3,
+    "zone-south": 8335.5,
+    "zone-rrnagar": 33696.7
+   }
+  },
+  {
+   "id": "corridor-old-madras",
+   "name": "Old Madras Road",
+   "zones": {
+    "zone-east": 16237.6,
+    "zone-mahadevapura": 19566.0
+   }
+  },
+  {
+   "id": "corridor-old-airport",
+   "name": "Old Airport Road",
+   "zones": {
+    "zone-east": 18367.6,
+    "zone-mahadevapura": 8338.2
+   }
+  },
+  {
+   "id": "corridor-bannerghatta",
+   "name": "Bannerghatta Road",
+   "zones": {
+    "zone-east": 397.7,
+    "zone-south": 15206.9,
+    "zone-bommanahalli": 27826.4
+   }
+  }
+ ],
+ "zones": [
+  {
+   "id": "zone-west",
+   "name": "West",
+   "csvName": "Bangalore West",
+   "polygon": [
+    [
+     12.96918,
+     77.55558
+    ],
+    [
+     12.96938,
+     77.55711
+    ],
+    [
+     12.97574,
+     77.55871
+    ],
+    [
+     12.97547,
+     77.55331
+    ],
+    [
+     12.97369,
+     77.55047
+    ],
+    [
+     12.97507,
+     77.54836
+    ],
+    [
+     12.97406,
+     77.54339
+    ],
+    [
+     12.97241,
+     77.53801
+    ],
+    [
+     12.96438,
+     77.53469
+    ],
+    [
+     12.9646,
+     77.52643
+    ],
+    [
+     12.96199,
+     77.52671
+    ],
+    [
+     12.96179,
+     77.52064
+    ],
+    [
+     12.95966,
+     77.51932
+    ],
+    [
+     12.95873,
+     77.52527
+    ],
+    [
+     12.95682,
+     77.52863
+    ],
+    [
+     12.94581,
+     77.52638
+    ],
+    [
+     12.94532,
+     77.52802
+    ],
+    [
+     12.93699,
+     77.52036
+    ],
+    [
+     12.93579,
+     77.51383
+    ],
+    [
+     12.93821,
+     77.51272
+    ],
+    [
+     12.94449,
+     77.51701
+    ],
+    [
+     12.95004,
+     77.51106
+    ],
+    [
+     12.95466,
+     77.51219
+    ],
+    [
+     12.959,
+     77.51156
+    ],
+    [
+     12.95771,
+     77.51448
+    ],
+    [
+     12.9618,
+     77.51606
+    ],
+    [
+     12.96207,
+     77.5178
+    ],
+    [
+     12.96534,
+     77.51847
+    ],
+    [
+     12.96629,
+     77.51739
+    ],
+    [
+     12.96931,
+     77.51744
+    ],
+    [
+     12.97091,
+     77.51853
+    ],
+    [
+     12.97358,
+     77.51732
+    ],
+    [
+     12.97959,
+     77.51973
+    ],
+    [
+     12.98247,
+     77.51824
+    ],
+    [
+     12.99557,
+     77.52363
+    ],
+    [
+     12.99786,
+     77.52509
+    ],
+    [
+     12.99909,
+     77.5282
+    ],
+    [
+     13.00136,
+     77.52783
+    ],
+    [
+     13.00228,
+     77.52918
+    ],
+    [
+     13.0083,
+     77.53046
+    ],
+    [
+     13.01068,
+     77.52764
+    ],
+    [
+     13.01467,
+     77.53065
+    ],
+    [
+     13.02215,
+     77.53263
+    ],
+    [
+     13.01904,
+     77.53981
+    ],
+    [
+     13.02637,
+     77.54426
+    ],
+    [
+     13.02216,
+     77.55152
+    ],
+    [
+     13.01487,
+     77.55402
+    ],
+    [
+     13.01577,
+     77.55581
+    ],
+    [
+     13.01919,
+     77.55389
+    ],
+    [
+     13.01984,
+     77.55549
+    ],
+    [
+     13.03093,
+     77.55998
+    ],
+    [
+     13.03468,
+     77.55738
+    ],
+    [
+     13.03858,
+     77.5573
+    ],
+    [
+     13.03922,
+     77.56008
+    ],
+    [
+     13.04198,
+     77.56211
+    ],
+    [
+     13.03288,
+     77.56948
+    ],
+    [
+     13.02846,
+     77.57125
+    ],
+    [
+     13.02654,
+     77.58009
+    ],
+    [
+     13.02291,
+     77.58466
+    ],
+    [
+     13.01451,
+     77.58397
+    ],
+    [
+     13.01379,
+     77.5878
+    ],
+    [
+     13.00842,
+     77.5917
+    ],
+    [
+     12.99497,
+     77.59625
+    ],
+    [
+     12.99533,
+     77.58968
+    ],
+    [
+     12.99783,
+     77.58436
+    ],
+    [
+     12.99946,
+     77.58419
+    ],
+    [
+     12.99366,
+     77.57711
+    ],
+    [
+     12.99174,
+     77.57757
+    ],
+    [
+     12.99099,
+     77.5799
+    ],
+    [
+     12.98414,
+     77.57479
+    ],
+    [
+     12.98365,
+     77.57759
+    ],
+    [
+     12.98207,
+     77.57658
+    ],
+    [
+     12.98067,
+     77.57725
+    ],
+    [
+     12.9801,
+     77.58109
+    ],
+    [
+     12.97793,
+     77.58445
+    ],
+    [
+     12.97307,
+     77.58109
+    ],
+    [
+     12.97184,
+     77.58287
+    ],
+    [
+     12.9679,
+     77.58209
+    ],
+    [
+     12.96651,
+     77.5813
+    ],
+    [
+     12.96798,
+     77.57868
+    ],
+    [
+     12.95738,
+     77.57356
+    ],
+    [
+     12.95699,
+     77.56335
+    ],
+    [
+     12.95395,
+     77.56343
+    ],
+    [
+     12.95326,
+     77.55653
+    ],
+    [
+     12.95166,
+     77.55565
+    ],
+    [
+     12.95014,
+     77.55807
+    ],
+    [
+     12.94979,
+     77.5548
+    ],
+    [
+     12.95235,
+     77.54912
+    ],
+    [
+     12.95471,
+     77.54958
+    ],
+    [
+     12.96399,
+     77.54386
+    ],
+    [
+     12.96479,
+     77.54779
+    ],
+    [
+     12.96805,
+     77.55159
+    ],
+    [
+     12.96918,
+     77.55558
+    ]
+   ],
+   "center": [
+    12.98885,
+    77.54952
+   ],
+   "areaKm2": 49.9,
+   "demographics": {
+    "population2001": 1194512,
+    "population2011": 1405560,
+    "populationGrowthRate": 0.0164,
+    "populationBaseYear": 1765110,
+    "csvAreaKm2": 52.0,
+    "boundaryRescaleFactor": 0.959,
+    "perCapitaIncomeINR": 8700.0,
+    "jobsShare": 0.27544,
+    "jobsBaseline": 743901
+   },
+   "mobility": {
+    "perCapitaTripRate": 1.52,
+    "averageTripLengthKm": 7.59,
+    "modeSharesRaw": {
+     "walk": 18.0,
+     "bicycle": 2.0,
+     "taxi": 0.2,
+     "auto": 12.0,
+     "twoWheeler": 25.0,
+     "carVan": 11.0,
+     "publicTransport": 32.0,
+     "slowMoving": 2.0
+    },
+    "modeShares": {
+     "walk": 0.1761,
+     "bicycle": 0.0196,
+     "taxi": 0.002,
+     "auto": 0.1174,
+     "twoWheeler": 0.2446,
+     "carVan": 0.1076,
+     "publicTransport": 0.3131,
+     "slowMoving": 0.0196
+    },
+    "tripsUnder15MinPct": 14.0,
+    "tripsUnder30MinPct": 24.0,
+    "dailyTrips": 2682968
+   },
+   "roads": {
+    "roadKm": 1324.6,
+    "laneKm": 2623.7,
+    "majorRoadKm": 177.6,
+    "majorCapacityPcuKmPerHr": 288577,
+    "byClass": {
+     "arterial": {
+      "km": 88.8,
+      "laneKm": 187.7,
+      "capacityPcuKmPerHr": 167953.4,
+      "lanesTaggedKm": 55.1
+     },
+     "sub_arterial": {
+      "km": 88.8,
+      "laneKm": 175.8,
+      "capacityPcuKmPerHr": 120623.4,
+      "lanesTaggedKm": 37.3
+     },
+     "collector": {
+      "km": 137.4,
+      "laneKm": 254.5,
+      "capacityPcuKmPerHr": 114530.5,
+      "lanesTaggedKm": 35.3
+     },
+     "local": {
+      "km": 1009.6,
+      "laneKm": 2005.6,
+      "capacityPcuKmPerHr": 601675.8,
+      "lanesTaggedKm": 11.8
+     }
+    }
+   },
+   "transit": {
+    "metroStations": [
+     "Chickpete",
+     "Krantivira Sangolli Rayanna Railway Station",
+     "Magadi Road",
+     "Mahakavi Kuvempu Road",
+     "Mahalakshmi",
+     "Mantri Square Sampige Road",
+     "Nadaprabhu Kempegowda Station, Majestic",
+     "Rajajinagar",
+     "Rajarajeshwari Nagar",
+     "Sandal Soap Factory",
+     "Sri Balagangadharanatha Swamiji Station, Hosahalli",
+     "Srirampura",
+     "Vijayanagar",
+     "Yeshwantpur"
+    ],
+    "metroDailyBoardings": 170977,
+    "ptDailyTrips": 840068,
+    "busPeakBusKmPerHr": 10356,
+    "busPeakPcuKmPerHr": 22784
+   },
+   "waste": {
+    "collectedTpdApril2020": 663.0,
+    "collectedTpdMay2020": 781.0,
+    "generationTpd": 847.2,
+    "processingCapacityTpd": 500.3
+   },
+   "freight": {
+    "goodsPeakVehicles": 8917,
+    "goodsPeakPcuKmPerHr": 126334,
+    "freightDemandTpd": 35256
+   }
+  },
+  {
+   "id": "zone-east",
+   "name": "East",
+   "csvName": "Bangalore East",
+   "polygon": [
+    [
+     13.04334,
+     77.58505
+    ],
+    [
+     13.04311,
+     77.59057
+    ],
+    [
+     13.04161,
+     77.59002
+    ],
+    [
+     13.04106,
+     77.59267
+    ],
+    [
+     13.04085,
+     77.60737
+    ],
+    [
+     13.03821,
+     77.61028
+    ],
+    [
+     13.04253,
+     77.612
+    ],
+    [
+     13.03832,
+     77.62353
+    ],
+    [
+     13.04551,
+     77.62749
+    ],
+    [
+     13.04234,
+     77.6286
+    ],
+    [
+     13.04258,
+     77.63464
+    ],
+    [
+     13.04072,
+     77.63596
+    ],
+    [
+     13.04315,
+     77.63783
+    ],
+    [
+     13.04308,
+     77.64009
+    ],
+    [
+     13.04242,
+     77.64139
+    ],
+    [
+     13.03951,
+     77.64146
+    ],
+    [
+     13.03897,
+     77.64377
+    ],
+    [
+     13.03588,
+     77.64494
+    ],
+    [
+     13.03539,
+     77.6418
+    ],
+    [
+     13.02799,
+     77.63761
+    ],
+    [
+     13.02869,
+     77.6335
+    ],
+    [
+     13.02777,
+     77.63272
+    ],
+    [
+     13.02571,
+     77.64012
+    ],
+    [
+     13.0162,
+     77.66194
+    ],
+    [
+     12.99748,
+     77.66407
+    ],
+    [
+     12.99676,
+     77.66279
+    ],
+    [
+     12.99019,
+     77.66836
+    ],
+    [
+     12.98867,
+     77.66741
+    ],
+    [
+     12.98549,
+     77.66797
+    ],
+    [
+     12.98637,
+     77.67492
+    ],
+    [
+     12.98306,
+     77.68025
+    ],
+    [
+     12.97271,
+     77.67812
+    ],
+    [
+     12.97557,
+     77.66731
+    ],
+    [
+     12.97145,
+     77.66616
+    ],
+    [
+     12.97198,
+     77.66157
+    ],
+    [
+     12.97078,
+     77.65775
+    ],
+    [
+     12.96824,
+     77.65727
+    ],
+    [
+     12.96631,
+     77.66196
+    ],
+    [
+     12.96496,
+     77.66055
+    ],
+    [
+     12.9629,
+     77.66171
+    ],
+    [
+     12.96169,
+     77.65997
+    ],
+    [
+     12.95906,
+     77.65966
+    ],
+    [
+     12.95889,
+     77.66358
+    ],
+    [
+     12.95572,
+     77.66337
+    ],
+    [
+     12.95567,
+     77.66091
+    ],
+    [
+     12.95478,
+     77.6624
+    ],
+    [
+     12.95433,
+     77.66099
+    ],
+    [
+     12.95287,
+     77.66098
+    ],
+    [
+     12.95252,
+     77.65252
+    ],
+    [
+     12.94907,
+     77.64925
+    ],
+    [
+     12.94601,
+     77.64903
+    ],
+    [
+     12.9494,
+     77.6454
+    ],
+    [
+     12.95333,
+     77.64425
+    ],
+    [
+     12.95394,
+     77.64207
+    ],
+    [
+     12.95153,
+     77.63974
+    ],
+    [
+     12.94293,
+     77.64916
+    ],
+    [
+     12.94025,
+     77.6544
+    ],
+    [
+     12.93985,
+     77.65806
+    ],
+    [
+     12.9379,
+     77.65814
+    ],
+    [
+     12.93827,
+     77.66043
+    ],
+    [
+     12.93497,
+     77.65502
+    ],
+    [
+     12.92942,
+     77.65912
+    ],
+    [
+     12.92983,
+     77.66108
+    ],
+    [
+     12.92823,
+     77.66329
+    ],
+    [
+     12.92161,
+     77.66116
+    ],
+    [
+     12.9212,
+     77.66279
+    ],
+    [
+     12.91879,
+     77.66222
+    ],
+    [
+     12.91634,
+     77.66035
+    ],
+    [
+     12.92045,
+     77.65466
+    ],
+    [
+     12.92118,
+     77.6515
+    ],
+    [
+     12.92422,
+     77.65174
+    ],
+    [
+     12.92406,
+     77.63929
+    ],
+    [
+     12.92584,
+     77.63917
+    ],
+    [
+     12.92616,
+     77.64132
+    ],
+    [
+     12.92926,
+     77.6419
+    ],
+    [
+     12.92969,
+     77.63958
+    ],
+    [
+     12.93734,
+     77.6333
+    ],
+    [
+     12.95015,
+     77.62592
+    ],
+    [
+     12.95166,
+     77.6215
+    ],
+    [
+     12.94745,
+     77.61932
+    ],
+    [
+     12.94925,
+     77.61686
+    ],
+    [
+     12.95003,
+     77.59988
+    ],
+    [
+     12.95605,
+     77.59223
+    ],
+    [
+     12.96233,
+     77.59482
+    ],
+    [
+     12.96302,
+     77.58957
+    ],
+    [
+     12.96551,
+     77.58673
+    ],
+    [
+     12.96681,
+     77.58744
+    ],
+    [
+     12.9687,
+     77.58436
+    ],
+    [
+     12.97036,
+     77.58445
+    ],
+    [
+     12.97307,
+     77.58109
+    ],
+    [
+     12.97793,
+     77.58445
+    ],
+    [
+     12.9801,
+     77.58109
+    ],
+    [
+     12.98067,
+     77.57725
+    ],
+    [
+     12.98207,
+     77.57658
+    ],
+    [
+     12.98365,
+     77.57759
+    ],
+    [
+     12.98414,
+     77.57479
+    ],
+    [
+     12.99099,
+     77.5799
+    ],
+    [
+     12.99174,
+     77.57757
+    ],
+    [
+     12.99366,
+     77.57711
+    ],
+    [
+     12.99925,
+     77.583
+    ],
+    [
+     12.99533,
+     77.58968
+    ],
+    [
+     12.99469,
+     77.5961
+    ],
+    [
+     12.99775,
+     77.59566
+    ],
+    [
+     13.0059,
+     77.59317
+    ],
+    [
+     13.01223,
+     77.58911
+    ],
+    [
+     13.01411,
+     77.58718
+    ],
+    [
+     13.01451,
+     77.58397
+    ],
+    [
+     13.02291,
+     77.58466
+    ],
+    [
+     13.02654,
+     77.58009
+    ],
+    [
+     13.02846,
+     77.57125
+    ],
+    [
+     13.03288,
+     77.56948
+    ],
+    [
+     13.04198,
+     77.56211
+    ],
+    [
+     13.04651,
+     77.56575
+    ],
+    [
+     13.04765,
+     77.57824
+    ],
+    [
+     13.04334,
+     77.58505
+    ]
+   ],
+   "center": [
+    12.98195,
+    77.62842
+   ],
+   "areaKm2": 91.7,
+   "demographics": {
+    "population2001": 1238889,
+    "population2011": 1539473,
+    "populationGrowthRate": 0.022,
+    "populationBaseYear": 2086640,
+    "csvAreaKm2": 101.0,
+    "boundaryRescaleFactor": 0.908,
+    "perCapitaIncomeINR": 7100.0,
+    "jobsShare": 0.20496,
+    "jobsBaseline": 553547
+   },
+   "mobility": {
+    "perCapitaTripRate": 1.19,
+    "averageTripLengthKm": 6.92,
+    "modeSharesRaw": {
+     "walk": 21.0,
+     "bicycle": 2.0,
+     "taxi": 1.0,
+     "auto": 13.0,
+     "twoWheeler": 23.0,
+     "carVan": 10.0,
+     "publicTransport": 30.0,
+     "slowMoving": 2.0
+    },
+    "modeShares": {
+     "walk": 0.2059,
+     "bicycle": 0.0196,
+     "taxi": 0.0098,
+     "auto": 0.1275,
+     "twoWheeler": 0.2255,
+     "carVan": 0.098,
+     "publicTransport": 0.2941,
+     "slowMoving": 0.0196
+    },
+    "tripsUnder15MinPct": 13.0,
+    "tripsUnder30MinPct": 32.0,
+    "dailyTrips": 2483101
+   },
+   "roads": {
+    "roadKm": 1781.3,
+    "laneKm": 3551.7,
+    "majorRoadKm": 242.2,
+    "majorCapacityPcuKmPerHr": 442561,
+    "byClass": {
+     "collector": {
+      "km": 214.0,
+      "laneKm": 373.8,
+      "capacityPcuKmPerHr": 168219.2,
+      "lanesTaggedKm": 64.3
+     },
+     "arterial": {
+      "km": 137.1,
+      "laneKm": 325.7,
+      "capacityPcuKmPerHr": 292224.4,
+      "lanesTaggedKm": 101.9
+     },
+     "local": {
+      "km": 1325.0,
+      "laneKm": 2634.7,
+      "capacityPcuKmPerHr": 790412.1,
+      "lanesTaggedKm": 39.4
+     },
+     "sub_arterial": {
+      "km": 105.1,
+      "laneKm": 217.5,
+      "capacityPcuKmPerHr": 150336.9,
+      "lanesTaggedKm": 64.3
+     }
+    }
+   },
+   "transit": {
+    "metroStations": [
+     "Baiyappanahalli",
+     "Cubbon Park",
+     "Dr. B. R. Ambedkar Station, Vidhana Soudha",
+     "Halasuru",
+     "Indiranagar",
+     "Mahatma Gandhi Road",
+     "Sir M. Visvesvaraya Stn., Central College",
+     "Swami Vivekananda Road",
+     "Trinity"
+    ],
+    "metroDailyBoardings": 123188,
+    "ptDailyTrips": 730324,
+    "busPeakBusKmPerHr": 9003,
+    "busPeakPcuKmPerHr": 19807
+   },
+   "waste": {
+    "collectedTpdApril2020": 768.0,
+    "collectedTpdMay2020": 895.0,
+    "generationTpd": 997.7,
+    "processingCapacityTpd": 591.5
+   },
+   "freight": {
+    "goodsPeakVehicles": 6635,
+    "goodsPeakPcuKmPerHr": 85709,
+    "freightDemandTpd": 32378
+   }
+  },
+  {
+   "id": "zone-south",
+   "name": "South",
+   "csvName": "Bangalore South",
+   "polygon": [
+    [
+     12.97574,
+     77.55871
+    ],
+    [
+     12.96938,
+     77.55711
+    ],
+    [
+     12.96805,
+     77.55159
+    ],
+    [
+     12.96514,
+     77.54849
+    ],
+    [
+     12.96399,
+     77.54386
+    ],
+    [
+     12.95471,
+     77.54958
+    ],
+    [
+     12.95235,
+     77.54912
+    ],
+    [
+     12.94979,
+     77.5548
+    ],
+    [
+     12.95014,
+     77.55807
+    ],
+    [
+     12.95166,
+     77.55565
+    ],
+    [
+     12.95326,
+     77.55653
+    ],
+    [
+     12.95395,
+     77.56343
+    ],
+    [
+     12.95699,
+     77.56335
+    ],
+    [
+     12.9573,
+     77.57344
+    ],
+    [
+     12.96798,
+     77.57868
+    ],
+    [
+     12.96651,
+     77.5813
+    ],
+    [
+     12.97184,
+     77.58287
+    ],
+    [
+     12.96302,
+     77.58957
+    ],
+    [
+     12.96233,
+     77.59482
+    ],
+    [
+     12.95605,
+     77.59223
+    ],
+    [
+     12.94978,
+     77.60024
+    ],
+    [
+     12.95055,
+     77.60346
+    ],
+    [
+     12.94897,
+     77.61104
+    ],
+    [
+     12.94925,
+     77.61686
+    ],
+    [
+     12.94745,
+     77.61932
+    ],
+    [
+     12.95166,
+     77.6215
+    ],
+    [
+     12.94907,
+     77.62728
+    ],
+    [
+     12.93759,
+     77.63311
+    ],
+    [
+     12.92969,
+     77.63958
+    ],
+    [
+     12.92926,
+     77.6419
+    ],
+    [
+     12.92616,
+     77.64132
+    ],
+    [
+     12.92567,
+     77.63912
+    ],
+    [
+     12.92383,
+     77.63992
+    ],
+    [
+     12.91595,
+     77.63817
+    ],
+    [
+     12.91754,
+     77.62378
+    ],
+    [
+     12.91729,
+     77.62263
+    ],
+    [
+     12.91297,
+     77.62135
+    ],
+    [
+     12.91254,
+     77.61994
+    ],
+    [
+     12.91532,
+     77.61656
+    ],
+    [
+     12.90461,
+     77.61264
+    ],
+    [
+     12.90581,
+     77.60385
+    ],
+    [
+     12.9087,
+     77.60402
+    ],
+    [
+     12.90853,
+     77.60023
+    ],
+    [
+     12.90513,
+     77.60185
+    ],
+    [
+     12.90351,
+     77.60146
+    ],
+    [
+     12.9035,
+     77.59894
+    ],
+    [
+     12.9011,
+     77.59947
+    ],
+    [
+     12.90266,
+     77.59399
+    ],
+    [
+     12.90557,
+     77.59356
+    ],
+    [
+     12.90558,
+     77.58645
+    ],
+    [
+     12.90464,
+     77.58644
+    ],
+    [
+     12.90557,
+     77.58173
+    ],
+    [
+     12.90374,
+     77.58175
+    ],
+    [
+     12.90532,
+     77.57691
+    ],
+    [
+     12.90383,
+     77.577
+    ],
+    [
+     12.90646,
+     77.57549
+    ],
+    [
+     12.90665,
+     77.57211
+    ],
+    [
+     12.90869,
+     77.57021
+    ],
+    [
+     12.90032,
+     77.56009
+    ],
+    [
+     12.89924,
+     77.56124
+    ],
+    [
+     12.89413,
+     77.55971
+    ],
+    [
+     12.89628,
+     77.55592
+    ],
+    [
+     12.90294,
+     77.55635
+    ],
+    [
+     12.90447,
+     77.55025
+    ],
+    [
+     12.90345,
+     77.5484
+    ],
+    [
+     12.90452,
+     77.54825
+    ],
+    [
+     12.90777,
+     77.54928
+    ],
+    [
+     12.90633,
+     77.55356
+    ],
+    [
+     12.91146,
+     77.55582
+    ],
+    [
+     12.91161,
+     77.55209
+    ],
+    [
+     12.91436,
+     77.55364
+    ],
+    [
+     12.91649,
+     77.54804
+    ],
+    [
+     12.91803,
+     77.54862
+    ],
+    [
+     12.91809,
+     77.53836
+    ],
+    [
+     12.92414,
+     77.54025
+    ],
+    [
+     12.92368,
+     77.53674
+    ],
+    [
+     12.92676,
+     77.53689
+    ],
+    [
+     12.92732,
+     77.53507
+    ],
+    [
+     12.93509,
+     77.5331
+    ],
+    [
+     12.93761,
+     77.53382
+    ],
+    [
+     12.94463,
+     77.52951
+    ],
+    [
+     12.94581,
+     77.52638
+    ],
+    [
+     12.95682,
+     77.52863
+    ],
+    [
+     12.95873,
+     77.52527
+    ],
+    [
+     12.95966,
+     77.51932
+    ],
+    [
+     12.96179,
+     77.52064
+    ],
+    [
+     12.96199,
+     77.52671
+    ],
+    [
+     12.9646,
+     77.52643
+    ],
+    [
+     12.96438,
+     77.53469
+    ],
+    [
+     12.97314,
+     77.53915
+    ],
+    [
+     12.97507,
+     77.54836
+    ],
+    [
+     12.97371,
+     77.55063
+    ],
+    [
+     12.97547,
+     77.55331
+    ],
+    [
+     12.97574,
+     77.55871
+    ]
+   ],
+   "center": [
+    12.93466,
+    77.5846
+   ],
+   "areaKm2": 61.0,
+   "demographics": {
+    "population2001": 1486353,
+    "population2011": 1760700,
+    "populationGrowthRate": 0.0171,
+    "populationBaseYear": 2231897,
+    "csvAreaKm2": 65.0,
+    "boundaryRescaleFactor": 0.938,
+    "perCapitaIncomeINR": 6500.0,
+    "jobsShare": 0.21176,
+    "jobsBaseline": 571915
+   },
+   "mobility": {
+    "perCapitaTripRate": 1.52,
+    "averageTripLengthKm": 6.47,
+    "modeSharesRaw": {
+     "walk": 21.0,
+     "bicycle": 2.0,
+     "taxi": 1.0,
+     "auto": 11.0,
+     "twoWheeler": 24.0,
+     "carVan": 11.0,
+     "publicTransport": 30.0,
+     "slowMoving": 2.0
+    },
+    "modeShares": {
+     "walk": 0.2059,
+     "bicycle": 0.0196,
+     "taxi": 0.0098,
+     "auto": 0.1078,
+     "twoWheeler": 0.2353,
+     "carVan": 0.1078,
+     "publicTransport": 0.2941,
+     "slowMoving": 0.0196
+    },
+    "tripsUnder15MinPct": 9.0,
+    "tripsUnder30MinPct": 24.0,
+    "dailyTrips": 3392483
+   },
+   "roads": {
+    "roadKm": 1701.6,
+    "laneKm": 3369.8,
+    "majorRoadKm": 257.3,
+    "majorCapacityPcuKmPerHr": 436941,
+    "byClass": {
+     "sub_arterial": {
+      "km": 129.8,
+      "laneKm": 260.8,
+      "capacityPcuKmPerHr": 181611.0,
+      "lanesTaggedKm": 50.5
+     },
+     "arterial": {
+      "km": 123.5,
+      "laneKm": 268.4,
+      "capacityPcuKmPerHr": 240493.9,
+      "lanesTaggedKm": 91.3
+     },
+     "local": {
+      "km": 1290.3,
+      "laneKm": 2558.0,
+      "capacityPcuKmPerHr": 767397.2,
+      "lanesTaggedKm": 23.6
+     },
+     "collector": {
+      "km": 154.2,
+      "laneKm": 274.4,
+      "capacityPcuKmPerHr": 123458.4,
+      "lanesTaggedKm": 32.4
+     },
+     "expressway": {
+      "km": 4.0,
+      "laneKm": 8.2,
+      "capacityPcuKmPerHr": 14836.3,
+      "lanesTaggedKm": 2.9
+     }
+    }
+   },
+   "transit": {
+    "metroStations": [
+     "Attiguppe",
+     "BTM Layout",
+     "Banashankari",
+     "Central Silk Board",
+     "Deepanjali Nagar",
+     "Jaya Prakash Nagar",
+     "Jayadeva Hospital",
+     "Jayanagar",
+     "Krishna Rajendra Market",
+     "Lalbagh",
+     "Mysore Road",
+     "National College",
+     "Ragigudda",
+     "Rashtreeya Vidyalaya Road",
+     "South End Circle"
+    ],
+    "metroDailyBoardings": 113468,
+    "ptDailyTrips": 997789,
+    "busPeakBusKmPerHr": 12300,
+    "busPeakPcuKmPerHr": 27061
+   },
+   "waste": {
+    "collectedTpdApril2020": 717.0,
+    "collectedTpdMay2020": 833.0,
+    "generationTpd": 906.6,
+    "processingCapacityTpd": 632.7
+   },
+   "freight": {
+    "goodsPeakVehicles": 6855,
+    "goodsPeakPcuKmPerHr": 82794,
+    "freightDemandTpd": 34056
+   }
+  },
+  {
+   "id": "zone-yelahanka",
+   "name": "Yelahanka",
+   "csvName": "Byatarayanapura",
+   "polygon": [
+    [
+     13.1402,
+     77.58238
+    ],
+    [
+     13.13269,
+     77.5856
+    ],
+    [
+     13.13323,
+     77.59117
+    ],
+    [
+     13.13177,
+     77.59966
+    ],
+    [
+     13.13415,
+     77.60182
+    ],
+    [
+     13.13324,
+     77.61201
+    ],
+    [
+     13.13112,
+     77.61493
+    ],
+    [
+     13.13096,
+     77.61954
+    ],
+    [
+     13.12604,
+     77.63048
+    ],
+    [
+     13.11327,
+     77.63871
+    ],
+    [
+     13.10625,
+     77.63699
+    ],
+    [
+     13.10481,
+     77.65044
+    ],
+    [
+     13.08676,
+     77.64275
+    ],
+    [
+     13.08634,
+     77.64613
+    ],
+    [
+     13.08515,
+     77.6466
+    ],
+    [
+     13.07783,
+     77.64215
+    ],
+    [
+     13.07516,
+     77.63831
+    ],
+    [
+     13.07494,
+     77.63949
+    ],
+    [
+     13.06969,
+     77.63953
+    ],
+    [
+     13.04099,
+     77.63668
+    ],
+    [
+     13.04101,
+     77.63534
+    ],
+    [
+     13.04258,
+     77.63464
+    ],
+    [
+     13.04234,
+     77.6286
+    ],
+    [
+     13.04551,
+     77.62749
+    ],
+    [
+     13.03832,
+     77.62353
+    ],
+    [
+     13.04253,
+     77.612
+    ],
+    [
+     13.03821,
+     77.61028
+    ],
+    [
+     13.04085,
+     77.60737
+    ],
+    [
+     13.04161,
+     77.59002
+    ],
+    [
+     13.04311,
+     77.59057
+    ],
+    [
+     13.04315,
+     77.5855
+    ],
+    [
+     13.04765,
+     77.57824
+    ],
+    [
+     13.04636,
+     77.56536
+    ],
+    [
+     13.04,
+     77.56096
+    ],
+    [
+     13.04267,
+     77.5571
+    ],
+    [
+     13.04942,
+     77.55393
+    ],
+    [
+     13.05673,
+     77.54679
+    ],
+    [
+     13.05495,
+     77.54471
+    ],
+    [
+     13.05483,
+     77.5353
+    ],
+    [
+     13.05767,
+     77.53547
+    ],
+    [
+     13.06005,
+     77.53385
+    ],
+    [
+     13.06325,
+     77.5352
+    ],
+    [
+     13.06732,
+     77.53396
+    ],
+    [
+     13.06977,
+     77.53098
+    ],
+    [
+     13.07248,
+     77.53183
+    ],
+    [
+     13.07787,
+     77.53078
+    ],
+    [
+     13.07888,
+     77.52944
+    ],
+    [
+     13.08213,
+     77.52995
+    ],
+    [
+     13.08379,
+     77.53688
+    ],
+    [
+     13.09007,
+     77.54078
+    ],
+    [
+     13.10132,
+     77.54423
+    ],
+    [
+     13.10042,
+     77.55733
+    ],
+    [
+     13.10837,
+     77.5611
+    ],
+    [
+     13.11211,
+     77.55968
+    ],
+    [
+     13.11394,
+     77.56168
+    ],
+    [
+     13.12595,
+     77.56551
+    ],
+    [
+     13.125,
+     77.56957
+    ],
+    [
+     13.14156,
+     77.57425
+    ],
+    [
+     13.14266,
+     77.58
+    ],
+    [
+     13.1402,
+     77.58238
+    ]
+   ],
+   "center": [
+    13.09098,
+    77.59279
+   ],
+   "areaKm2": 99.3,
+   "demographics": {
+    "population2001": 243149,
+    "population2011": 380676,
+    "populationGrowthRate": 0.0458,
+    "populationBaseYear": 713039,
+    "csvAreaKm2": 151.0,
+    "boundaryRescaleFactor": 0.658,
+    "perCapitaIncomeINR": 6900.0,
+    "jobsShare": 0.04347,
+    "jobsBaseline": 117393
+   },
+   "mobility": {
+    "perCapitaTripRate": 1.48,
+    "averageTripLengthKm": 6.64,
+    "modeSharesRaw": {
+     "walk": 25.0,
+     "bicycle": 1.0,
+     "taxi": 0.0,
+     "auto": 10.0,
+     "twoWheeler": 26.0,
+     "carVan": 7.0,
+     "publicTransport": 31.0,
+     "slowMoving": 1.0
+    },
+    "modeShares": {
+     "walk": 0.2475,
+     "bicycle": 0.0099,
+     "taxi": 0.0,
+     "auto": 0.099,
+     "twoWheeler": 0.2574,
+     "carVan": 0.0693,
+     "publicTransport": 0.3069,
+     "slowMoving": 0.0099
+    },
+    "tripsUnder15MinPct": 11.0,
+    "tripsUnder30MinPct": 17.0,
+    "dailyTrips": 1055298
+   },
+   "roads": {
+    "roadKm": 1467.4,
+    "laneKm": 2947.0,
+    "majorRoadKm": 174.4,
+    "majorCapacityPcuKmPerHr": 325722,
+    "byClass": {
+     "arterial": {
+      "km": 87.1,
+      "laneKm": 226.4,
+      "capacityPcuKmPerHr": 202853.3,
+      "lanesTaggedKm": 81.2
+     },
+     "collector": {
+      "km": 140.4,
+      "laneKm": 259.0,
+      "capacityPcuKmPerHr": 116540.8,
+      "lanesTaggedKm": 45.0
+     },
+     "local": {
+      "km": 1152.5,
+      "laneKm": 2285.1,
+      "capacityPcuKmPerHr": 685540.5,
+      "lanesTaggedKm": 34.0
+     },
+     "sub_arterial": {
+      "km": 87.3,
+      "laneKm": 176.5,
+      "capacityPcuKmPerHr": 122869.0,
+      "lanesTaggedKm": 59.5
+     }
+    }
+   },
+   "transit": {
+    "metroStations": [],
+    "metroDailyBoardings": 0,
+    "ptDailyTrips": 323903,
+    "busPeakBusKmPerHr": 3993,
+    "busPeakPcuKmPerHr": 8785
+   },
+   "waste": {
+    "collectedTpdApril2020": 241.0,
+    "collectedTpdMay2020": 271.0,
+    "generationTpd": 339.1,
+    "processingCapacityTpd": 202.1
+   },
+   "freight": {
+    "goodsPeakVehicles": 1407,
+    "goodsPeakPcuKmPerHr": 17441,
+    "freightDemandTpd": 9016
+   }
+  },
+  {
+   "id": "zone-mahadevapura",
+   "name": "Mahadevapura",
+   "csvName": "Mahadevapura",
+   "polygon": [
+    [
+     13.08134,
+     77.64965
+    ],
+    [
+     13.08191,
+     77.65486
+    ],
+    [
+     13.07486,
+     77.65643
+    ],
+    [
+     13.06773,
+     77.66015
+    ],
+    [
+     13.0659,
+     77.66702
+    ],
+    [
+     13.06395,
+     77.66715
+    ],
+    [
+     13.06596,
+     77.67005
+    ],
+    [
+     13.06506,
+     77.67693
+    ],
+    [
+     13.06291,
+     77.67684
+    ],
+    [
+     13.06286,
+     77.67899
+    ],
+    [
+     13.05577,
+     77.67943
+    ],
+    [
+     13.05235,
+     77.67838
+    ],
+    [
+     13.04995,
+     77.68334
+    ],
+    [
+     13.04527,
+     77.68494
+    ],
+    [
+     13.03312,
+     77.68354
+    ],
+    [
+     13.03256,
+     77.69085
+    ],
+    [
+     13.02672,
+     77.6944
+    ],
+    [
+     13.02744,
+     77.7017
+    ],
+    [
+     13.02497,
+     77.70127
+    ],
+    [
+     13.02629,
+     77.70596
+    ],
+    [
+     13.02527,
+     77.70924
+    ],
+    [
+     13.03199,
+     77.71508
+    ],
+    [
+     13.03156,
+     77.71739
+    ],
+    [
+     13.03292,
+     77.71737
+    ],
+    [
+     13.03412,
+     77.72152
+    ],
+    [
+     13.03337,
+     77.72396
+    ],
+    [
+     13.02579,
+     77.72517
+    ],
+    [
+     13.01969,
+     77.7299
+    ],
+    [
+     13.01048,
+     77.72801
+    ],
+    [
+     13.01093,
+     77.73567
+    ],
+    [
+     13.00749,
+     77.7361
+    ],
+    [
+     13.00813,
+     77.74077
+    ],
+    [
+     13.00715,
+     77.74099
+    ],
+    [
+     13.00671,
+     77.74717
+    ],
+    [
+     13.01262,
+     77.74797
+    ],
+    [
+     13.00892,
+     77.75443
+    ],
+    [
+     13.01007,
+     77.75601
+    ],
+    [
+     13.00285,
+     77.76347
+    ],
+    [
+     13.00408,
+     77.76412
+    ],
+    [
+     13.00269,
+     77.7687
+    ],
+    [
+     13.0151,
+     77.77151
+    ],
+    [
+     13.01346,
+     77.77441
+    ],
+    [
+     13.00638,
+     77.77337
+    ],
+    [
+     13.00588,
+     77.77585
+    ],
+    [
+     13.00351,
+     77.77562
+    ],
+    [
+     13.00259,
+     77.77246
+    ],
+    [
+     13.00086,
+     77.77499
+    ],
+    [
+     12.992,
+     77.77418
+    ],
+    [
+     12.99153,
+     77.77611
+    ],
+    [
+     12.98639,
+     77.7759
+    ],
+    [
+     12.98516,
+     77.77715
+    ],
+    [
+     12.98052,
+     77.77472
+    ],
+    [
+     12.97856,
+     77.77843
+    ],
+    [
+     12.9768,
+     77.77862
+    ],
+    [
+     12.97497,
+     77.77616
+    ],
+    [
+     12.97224,
+     77.77924
+    ],
+    [
+     12.97048,
+     77.77867
+    ],
+    [
+     12.97089,
+     77.78326
+    ],
+    [
+     12.96679,
+     77.78418
+    ],
+    [
+     12.96676,
+     77.7786
+    ],
+    [
+     12.96822,
+     77.77745
+    ],
+    [
+     12.96592,
+     77.77198
+    ],
+    [
+     12.95936,
+     77.76699
+    ],
+    [
+     12.95949,
+     77.76457
+    ],
+    [
+     12.93502,
+     77.76634
+    ],
+    [
+     12.92877,
+     77.76465
+    ],
+    [
+     12.92526,
+     77.75222
+    ],
+    [
+     12.92208,
+     77.75138
+    ],
+    [
+     12.9199,
+     77.74569
+    ],
+    [
+     12.91372,
+     77.74473
+    ],
+    [
+     12.91472,
+     77.73751
+    ],
+    [
+     12.9135,
+     77.73728
+    ],
+    [
+     12.9132,
+     77.73445
+    ],
+    [
+     12.91418,
+     77.73436
+    ],
+    [
+     12.91441,
+     77.72757
+    ],
+    [
+     12.90661,
+     77.72628
+    ],
+    [
+     12.90889,
+     77.72075
+    ],
+    [
+     12.90897,
+     77.71764
+    ],
+    [
+     12.90739,
+     77.71612
+    ],
+    [
+     12.90815,
+     77.70835
+    ],
+    [
+     12.90203,
+     77.70687
+    ],
+    [
+     12.90404,
+     77.70285
+    ],
+    [
+     12.90398,
+     77.69153
+    ],
+    [
+     12.90553,
+     77.69093
+    ],
+    [
+     12.90645,
+     77.68685
+    ],
+    [
+     12.90473,
+     77.68731
+    ],
+    [
+     12.90443,
+     77.68578
+    ],
+    [
+     12.90245,
+     77.68745
+    ],
+    [
+     12.90143,
+     77.68245
+    ],
+    [
+     12.89429,
+     77.67724
+    ],
+    [
+     12.89291,
+     77.6738
+    ],
+    [
+     12.89455,
+     77.65379
+    ],
+    [
+     12.89876,
+     77.65678
+    ],
+    [
+     12.90039,
+     77.65673
+    ],
+    [
+     12.90072,
+     77.65462
+    ],
+    [
+     12.90178,
+     77.65454
+    ],
+    [
+     12.90917,
+     77.65657
+    ],
+    [
+     12.91013,
+     77.66013
+    ],
+    [
+     12.91497,
+     77.66042
+    ],
+    [
+     12.91756,
+     77.66211
+    ],
+    [
+     12.92332,
+     77.66877
+    ],
+    [
+     12.93124,
+     77.66803
+    ],
+    [
+     12.93101,
+     77.6664
+    ],
+    [
+     12.92805,
+     77.66459
+    ],
+    [
+     12.92983,
+     77.66108
+    ],
+    [
+     12.92942,
+     77.65912
+    ],
+    [
+     12.93497,
+     77.65502
+    ],
+    [
+     12.93827,
+     77.66043
+    ],
+    [
+     12.9379,
+     77.65814
+    ],
+    [
+     12.93985,
+     77.65806
+    ],
+    [
+     12.94025,
+     77.6544
+    ],
+    [
+     12.94293,
+     77.64916
+    ],
+    [
+     12.95153,
+     77.63974
+    ],
+    [
+     12.95394,
+     77.64207
+    ],
+    [
+     12.95333,
+     77.64425
+    ],
+    [
+     12.9494,
+     77.6454
+    ],
+    [
+     12.94601,
+     77.64903
+    ],
+    [
+     12.94907,
+     77.64925
+    ],
+    [
+     12.95252,
+     77.65252
+    ],
+    [
+     12.95287,
+     77.66098
+    ],
+    [
+     12.95433,
+     77.66099
+    ],
+    [
+     12.95478,
+     77.6624
+    ],
+    [
+     12.95567,
+     77.66091
+    ],
+    [
+     12.95572,
+     77.66337
+    ],
+    [
+     12.95889,
+     77.66358
+    ],
+    [
+     12.95906,
+     77.65966
+    ],
+    [
+     12.96169,
+     77.65997
+    ],
+    [
+     12.9629,
+     77.66171
+    ],
+    [
+     12.96496,
+     77.66055
+    ],
+    [
+     12.96631,
+     77.66196
+    ],
+    [
+     12.96824,
+     77.65727
+    ],
+    [
+     12.97071,
+     77.6577
+    ],
+    [
+     12.97198,
+     77.66157
+    ],
+    [
+     12.97145,
+     77.66616
+    ],
+    [
+     12.97557,
+     77.66731
+    ],
+    [
+     12.97271,
+     77.67812
+    ],
+    [
+     12.98276,
+     77.68044
+    ],
+    [
+     12.98637,
+     77.67492
+    ],
+    [
+     12.98594,
+     77.66753
+    ],
+    [
+     12.9902,
+     77.66836
+    ],
+    [
+     12.99676,
+     77.66279
+    ],
+    [
+     12.99748,
+     77.66407
+    ],
+    [
+     13.01634,
+     77.6618
+    ],
+    [
+     13.02777,
+     77.63272
+    ],
+    [
+     13.02869,
+     77.6335
+    ],
+    [
+     13.02799,
+     77.63761
+    ],
+    [
+     13.03539,
+     77.6418
+    ],
+    [
+     13.03588,
+     77.64494
+    ],
+    [
+     13.03897,
+     77.64377
+    ],
+    [
+     13.03951,
+     77.64146
+    ],
+    [
+     13.04249,
+     77.64133
+    ],
+    [
+     13.0435,
+     77.63712
+    ],
+    [
+     13.06969,
+     77.63953
+    ],
+    [
+     13.07494,
+     77.63949
+    ],
+    [
+     13.07516,
+     77.63831
+    ],
+    [
+     13.07783,
+     77.64215
+    ],
+    [
+     13.08515,
+     77.6466
+    ],
+    [
+     13.08134,
+     77.64965
+    ]
+   ],
+   "center": [
+    12.98906,
+    77.72195
+   ],
+   "areaKm2": 171.1,
+   "demographics": {
+    "population2001": 455887,
+    "population2011": 693161,
+    "populationGrowthRate": 0.0428,
+    "populationBaseYear": 1246242,
+    "csvAreaKm2": 132.0,
+    "boundaryRescaleFactor": 1.296,
+    "perCapitaIncomeINR": 10800.0,
+    "jobsShare": 0.15146,
+    "jobsBaseline": 409071
+   },
+   "mobility": {
+    "perCapitaTripRate": 1.35,
+    "averageTripLengthKm": 6.14,
+    "modeSharesRaw": {
+     "walk": 29.0,
+     "bicycle": 3.0,
+     "taxi": 0.0,
+     "auto": 7.0,
+     "twoWheeler": 25.0,
+     "carVan": 6.0,
+     "publicTransport": 30.0,
+     "slowMoving": 3.0
+    },
+    "modeShares": {
+     "walk": 0.2816,
+     "bicycle": 0.0291,
+     "taxi": 0.0,
+     "auto": 0.068,
+     "twoWheeler": 0.2427,
+     "carVan": 0.0583,
+     "publicTransport": 0.2913,
+     "slowMoving": 0.0291
+    },
+    "tripsUnder15MinPct": 15.0,
+    "tripsUnder30MinPct": 22.0,
+    "dailyTrips": 1682427
+   },
+   "roads": {
+    "roadKm": 2129.7,
+    "laneKm": 4288.0,
+    "majorRoadKm": 230.8,
+    "majorCapacityPcuKmPerHr": 438766,
+    "byClass": {
+     "collector": {
+      "km": 242.0,
+      "laneKm": 462.6,
+      "capacityPcuKmPerHr": 208191.8,
+      "lanesTaggedKm": 115.7
+     },
+     "arterial": {
+      "km": 161.9,
+      "laneKm": 390.2,
+      "capacityPcuKmPerHr": 347115.3,
+      "lanesTaggedKm": 138.2
+     },
+     "local": {
+      "km": 1656.9,
+      "laneKm": 3295.0,
+      "capacityPcuKmPerHr": 988487.7,
+      "lanesTaggedKm": 31.0
+     },
+     "sub_arterial": {
+      "km": 68.9,
+      "laneKm": 140.2,
+      "capacityPcuKmPerHr": 91650.6,
+      "lanesTaggedKm": 29.8
+     }
+    }
+   },
+   "transit": {
+    "metroStations": [
+     "Benniganahalli",
+     "Garudacharpalya",
+     "Hoodi",
+     "Hopefarm Channasandra",
+     "Kadugodi Tree Park",
+     "Krishnarajapura",
+     "Kundalahalli",
+     "Nallurahalli",
+     "Pattandur Agrahara",
+     "Seetharampalya",
+     "Sri Sathya Sai Hospital",
+     "Whitefield (Kadugodi)"
+    ],
+    "metroDailyBoardings": 127610,
+    "ptDailyTrips": 490027,
+    "busPeakBusKmPerHr": 6041,
+    "busPeakPcuKmPerHr": 13290
+   },
+   "waste": {
+    "collectedTpdApril2020": 270.0,
+    "collectedTpdMay2020": 337.0,
+    "generationTpd": 415.5,
+    "processingCapacityTpd": 353.3
+   },
+   "freight": {
+    "goodsPeakVehicles": 4903,
+    "goodsPeakPcuKmPerHr": 56199,
+    "freightDemandTpd": 21577
+   }
+  },
+  {
+   "id": "zone-bommanahalli",
+   "name": "Bommanahalli",
+   "csvName": "Bommanahalli",
+   "polygon": [
+    [
+     12.93124,
+     77.66803
+    ],
+    [
+     12.92156,
+     77.66779
+    ],
+    [
+     12.92107,
+     77.66518
+    ],
+    [
+     12.91756,
+     77.66211
+    ],
+    [
+     12.91497,
+     77.66042
+    ],
+    [
+     12.91013,
+     77.66013
+    ],
+    [
+     12.90917,
+     77.65657
+    ],
+    [
+     12.90178,
+     77.65454
+    ],
+    [
+     12.90072,
+     77.65462
+    ],
+    [
+     12.90039,
+     77.65673
+    ],
+    [
+     12.89876,
+     77.65678
+    ],
+    [
+     12.89455,
+     77.65379
+    ],
+    [
+     12.89291,
+     77.6738
+    ],
+    [
+     12.88465,
+     77.67233
+    ],
+    [
+     12.88383,
+     77.67434
+    ],
+    [
+     12.87982,
+     77.67403
+    ],
+    [
+     12.8803,
+     77.67104
+    ],
+    [
+     12.87805,
+     77.67324
+    ],
+    [
+     12.87263,
+     77.67529
+    ],
+    [
+     12.86825,
+     77.67289
+    ],
+    [
+     12.86622,
+     77.66656
+    ],
+    [
+     12.86068,
+     77.66357
+    ],
+    [
+     12.85877,
+     77.66115
+    ],
+    [
+     12.85839,
+     77.65749
+    ],
+    [
+     12.85553,
+     77.65551
+    ],
+    [
+     12.85439,
+     77.65034
+    ],
+    [
+     12.8521,
+     77.65008
+    ],
+    [
+     12.85293,
+     77.64962
+    ],
+    [
+     12.85121,
+     77.64288
+    ],
+    [
+     12.85943,
+     77.64284
+    ],
+    [
+     12.86505,
+     77.64052
+    ],
+    [
+     12.86123,
+     77.63219
+    ],
+    [
+     12.85691,
+     77.62906
+    ],
+    [
+     12.85757,
+     77.61679
+    ],
+    [
+     12.85165,
+     77.6127
+    ],
+    [
+     12.85126,
+     77.60918
+    ],
+    [
+     12.84605,
+     77.60932
+    ],
+    [
+     12.84824,
+     77.60455
+    ],
+    [
+     12.84916,
+     77.59562
+    ],
+    [
+     12.83451,
+     77.59154
+    ],
+    [
+     12.83545,
+     77.58956
+    ],
+    [
+     12.83363,
+     77.58708
+    ],
+    [
+     12.83825,
+     77.57895
+    ],
+    [
+     12.83968,
+     77.56568
+    ],
+    [
+     12.83902,
+     77.5622
+    ],
+    [
+     12.84153,
+     77.55728
+    ],
+    [
+     12.84393,
+     77.55718
+    ],
+    [
+     12.84801,
+     77.55448
+    ],
+    [
+     12.84714,
+     77.55303
+    ],
+    [
+     12.84769,
+     77.54478
+    ],
+    [
+     12.85545,
+     77.54645
+    ],
+    [
+     12.85828,
+     77.54639
+    ],
+    [
+     12.85963,
+     77.54505
+    ],
+    [
+     12.86439,
+     77.54831
+    ],
+    [
+     12.86693,
+     77.54826
+    ],
+    [
+     12.86844,
+     77.55054
+    ],
+    [
+     12.87167,
+     77.55002
+    ],
+    [
+     12.87661,
+     77.55202
+    ],
+    [
+     12.88112,
+     77.55089
+    ],
+    [
+     12.88455,
+     77.5469
+    ],
+    [
+     12.87919,
+     77.54371
+    ],
+    [
+     12.88026,
+     77.53752
+    ],
+    [
+     12.88328,
+     77.53756
+    ],
+    [
+     12.8853,
+     77.53258
+    ],
+    [
+     12.88319,
+     77.51903
+    ],
+    [
+     12.89006,
+     77.51572
+    ],
+    [
+     12.89381,
+     77.51588
+    ],
+    [
+     12.89361,
+     77.5209
+    ],
+    [
+     12.89756,
+     77.52088
+    ],
+    [
+     12.89747,
+     77.52432
+    ],
+    [
+     12.90238,
+     77.52634
+    ],
+    [
+     12.90204,
+     77.528
+    ],
+    [
+     12.90499,
+     77.52856
+    ],
+    [
+     12.9043,
+     77.52587
+    ],
+    [
+     12.9131,
+     77.53109
+    ],
+    [
+     12.91779,
+     77.53178
+    ],
+    [
+     12.91925,
+     77.53643
+    ],
+    [
+     12.91752,
+     77.53931
+    ],
+    [
+     12.91881,
+     77.54177
+    ],
+    [
+     12.91764,
+     77.54317
+    ],
+    [
+     12.91803,
+     77.54862
+    ],
+    [
+     12.91649,
+     77.54804
+    ],
+    [
+     12.91436,
+     77.55364
+    ],
+    [
+     12.91161,
+     77.55209
+    ],
+    [
+     12.91146,
+     77.55582
+    ],
+    [
+     12.90633,
+     77.55356
+    ],
+    [
+     12.90777,
+     77.54928
+    ],
+    [
+     12.90364,
+     77.54831
+    ],
+    [
+     12.90447,
+     77.55025
+    ],
+    [
+     12.90294,
+     77.55635
+    ],
+    [
+     12.89695,
+     77.55538
+    ],
+    [
+     12.89518,
+     77.55895
+    ],
+    [
+     12.89353,
+     77.5596
+    ],
+    [
+     12.89924,
+     77.56124
+    ],
+    [
+     12.90032,
+     77.56009
+    ],
+    [
+     12.90869,
+     77.57021
+    ],
+    [
+     12.90665,
+     77.57211
+    ],
+    [
+     12.90646,
+     77.57549
+    ],
+    [
+     12.90383,
+     77.577
+    ],
+    [
+     12.90532,
+     77.57691
+    ],
+    [
+     12.90374,
+     77.58175
+    ],
+    [
+     12.90557,
+     77.58173
+    ],
+    [
+     12.90464,
+     77.58644
+    ],
+    [
+     12.90558,
+     77.58645
+    ],
+    [
+     12.90557,
+     77.59356
+    ],
+    [
+     12.90266,
+     77.59399
+    ],
+    [
+     12.9011,
+     77.59947
+    ],
+    [
+     12.9035,
+     77.59894
+    ],
+    [
+     12.90351,
+     77.60146
+    ],
+    [
+     12.90513,
+     77.60185
+    ],
+    [
+     12.90853,
+     77.60023
+    ],
+    [
+     12.9087,
+     77.60402
+    ],
+    [
+     12.90581,
+     77.60385
+    ],
+    [
+     12.90461,
+     77.61264
+    ],
+    [
+     12.91532,
+     77.61656
+    ],
+    [
+     12.91254,
+     77.61994
+    ],
+    [
+     12.91297,
+     77.62135
+    ],
+    [
+     12.91729,
+     77.62263
+    ],
+    [
+     12.91754,
+     77.62378
+    ],
+    [
+     12.91595,
+     77.63817
+    ],
+    [
+     12.92383,
+     77.63992
+    ],
+    [
+     12.92422,
+     77.65174
+    ],
+    [
+     12.92118,
+     77.6515
+    ],
+    [
+     12.92045,
+     77.65466
+    ],
+    [
+     12.91634,
+     77.66035
+    ],
+    [
+     12.91879,
+     77.66222
+    ],
+    [
+     12.9212,
+     77.66279
+    ],
+    [
+     12.92161,
+     77.66116
+    ],
+    [
+     12.92823,
+     77.66329
+    ],
+    [
+     12.92814,
+     77.66493
+    ],
+    [
+     12.93101,
+     77.6664
+    ],
+    [
+     12.93124,
+     77.66803
+    ]
+   ],
+   "center": [
+    12.88249,
+    77.61172
+   ],
+   "areaKm2": 97.7,
+   "demographics": {
+    "population2001": 210059,
+    "population2011": 327920,
+    "populationGrowthRate": 0.0455,
+    "populationBaseYear": 611738,
+    "csvAreaKm2": 141.0,
+    "boundaryRescaleFactor": 0.693,
+    "perCapitaIncomeINR": 14200.0,
+    "jobsShare": 0.06454,
+    "jobsBaseline": 174314
+   },
+   "mobility": {
+    "perCapitaTripRate": 1.51,
+    "averageTripLengthKm": 5.77,
+    "modeSharesRaw": {
+     "walk": 35.0,
+     "bicycle": 1.0,
+     "taxi": 1.0,
+     "auto": 5.0,
+     "twoWheeler": 26.0,
+     "carVan": 5.0,
+     "publicTransport": 27.0,
+     "slowMoving": 1.0
+    },
+    "modeShares": {
+     "walk": 0.3465,
+     "bicycle": 0.0099,
+     "taxi": 0.0099,
+     "auto": 0.0495,
+     "twoWheeler": 0.2574,
+     "carVan": 0.0495,
+     "publicTransport": 0.2673,
+     "slowMoving": 0.0099
+    },
+    "tripsUnder15MinPct": 13.0,
+    "tripsUnder30MinPct": 20.0,
+    "dailyTrips": 923724
+   },
+   "roads": {
+    "roadKm": 1857.6,
+    "laneKm": 3716.7,
+    "majorRoadKm": 181.1,
+    "majorCapacityPcuKmPerHr": 387316,
+    "byClass": {
+     "sub_arterial": {
+      "km": 87.4,
+      "laneKm": 180.4,
+      "capacityPcuKmPerHr": 120938.5,
+      "lanesTaggedKm": 45.2
+     },
+     "local": {
+      "km": 1487.5,
+      "laneKm": 2963.2,
+      "capacityPcuKmPerHr": 888974.7,
+      "lanesTaggedKm": 71.0
+     },
+     "collector": {
+      "km": 189.0,
+      "laneKm": 363.2,
+      "capacityPcuKmPerHr": 163429.4,
+      "lanesTaggedKm": 63.7
+     },
+     "arterial": {
+      "km": 50.9,
+      "laneKm": 123.6,
+      "capacityPcuKmPerHr": 111074.5,
+      "lanesTaggedKm": 46.9
+     },
+     "expressway": {
+      "km": 42.8,
+      "laneKm": 86.3,
+      "capacityPcuKmPerHr": 155302.5,
+      "lanesTaggedKm": 42.2
+     }
+    }
+   },
+   "transit": {
+    "metroStations": [
+     "Beratena Agrahara",
+     "Bommanahalli",
+     "Doddakallasandra",
+     "Hongasandra",
+     "Hosa Road",
+     "Konanakunte Cross",
+     "Kudlu Gate",
+     "Singasandra",
+     "Yelachenahalli"
+    ],
+    "metroDailyBoardings": 39966,
+    "ptDailyTrips": 246936,
+    "busPeakBusKmPerHr": 3044,
+    "busPeakPcuKmPerHr": 6697
+   },
+   "waste": {
+    "collectedTpdApril2020": 243.0,
+    "collectedTpdMay2020": 284.0,
+    "generationTpd": 354.8,
+    "processingCapacityTpd": 173.4
+   },
+   "freight": {
+    "goodsPeakVehicles": 2089,
+    "goodsPeakPcuKmPerHr": 22505,
+    "freightDemandTpd": 9836
+   }
+  },
+  {
+   "id": "zone-rrnagar",
+   "name": "Rajarajeshwari Nagar",
+   "csvName": "Rajarajeshwari Nagara",
+   "polygon": [
+    [
+     13.05673,
+     77.54679
+    ],
+    [
+     13.04777,
+     77.55505
+    ],
+    [
+     13.04267,
+     77.5571
+    ],
+    [
+     13.04,
+     77.56096
+    ],
+    [
+     13.03858,
+     77.5573
+    ],
+    [
+     13.03468,
+     77.55738
+    ],
+    [
+     13.03093,
+     77.55998
+    ],
+    [
+     13.01984,
+     77.55549
+    ],
+    [
+     13.01919,
+     77.55389
+    ],
+    [
+     13.01581,
+     77.55586
+    ],
+    [
+     13.01487,
+     77.55402
+    ],
+    [
+     13.02216,
+     77.55152
+    ],
+    [
+     13.0226,
+     77.55105
+    ],
+    [
+     13.02643,
+     77.54415
+    ],
+    [
+     13.01904,
+     77.53981
+    ],
+    [
+     13.02215,
+     77.53263
+    ],
+    [
+     13.01467,
+     77.53065
+    ],
+    [
+     13.01068,
+     77.52764
+    ],
+    [
+     13.0083,
+     77.53046
+    ],
+    [
+     13.00228,
+     77.52918
+    ],
+    [
+     13.00136,
+     77.52783
+    ],
+    [
+     12.99909,
+     77.5282
+    ],
+    [
+     12.99786,
+     77.52509
+    ],
+    [
+     12.99557,
+     77.52363
+    ],
+    [
+     12.98247,
+     77.51824
+    ],
+    [
+     12.97959,
+     77.51973
+    ],
+    [
+     12.97358,
+     77.51732
+    ],
+    [
+     12.97091,
+     77.51853
+    ],
+    [
+     12.96931,
+     77.51744
+    ],
+    [
+     12.96629,
+     77.51739
+    ],
+    [
+     12.96534,
+     77.51847
+    ],
+    [
+     12.96207,
+     77.5178
+    ],
+    [
+     12.9618,
+     77.51606
+    ],
+    [
+     12.95771,
+     77.51448
+    ],
+    [
+     12.959,
+     77.51156
+    ],
+    [
+     12.95466,
+     77.51219
+    ],
+    [
+     12.95004,
+     77.51106
+    ],
+    [
+     12.94449,
+     77.51701
+    ],
+    [
+     12.93821,
+     77.51272
+    ],
+    [
+     12.93579,
+     77.51383
+    ],
+    [
+     12.93699,
+     77.52036
+    ],
+    [
+     12.94519,
+     77.52789
+    ],
+    [
+     12.94491,
+     77.52903
+    ],
+    [
+     12.93647,
+     77.5343
+    ],
+    [
+     12.93509,
+     77.5331
+    ],
+    [
+     12.92732,
+     77.53507
+    ],
+    [
+     12.92676,
+     77.53689
+    ],
+    [
+     12.92368,
+     77.53674
+    ],
+    [
+     12.92473,
+     77.53887
+    ],
+    [
+     12.92405,
+     77.54028
+    ],
+    [
+     12.9181,
+     77.53836
+    ],
+    [
+     12.91925,
+     77.53643
+    ],
+    [
+     12.91779,
+     77.53178
+    ],
+    [
+     12.9131,
+     77.53109
+    ],
+    [
+     12.9043,
+     77.52587
+    ],
+    [
+     12.90499,
+     77.52856
+    ],
+    [
+     12.90204,
+     77.528
+    ],
+    [
+     12.90238,
+     77.52634
+    ],
+    [
+     12.89747,
+     77.52432
+    ],
+    [
+     12.89784,
+     77.52113
+    ],
+    [
+     12.89384,
+     77.52099
+    ],
+    [
+     12.89306,
+     77.51982
+    ],
+    [
+     12.89381,
+     77.51588
+    ],
+    [
+     12.88738,
+     77.51665
+    ],
+    [
+     12.88319,
+     77.51903
+    ],
+    [
+     12.8853,
+     77.53258
+    ],
+    [
+     12.88328,
+     77.53756
+    ],
+    [
+     12.88026,
+     77.53752
+    ],
+    [
+     12.87921,
+     77.54321
+    ],
+    [
+     12.88455,
+     77.5469
+    ],
+    [
+     12.88112,
+     77.55089
+    ],
+    [
+     12.87661,
+     77.55202
+    ],
+    [
+     12.87167,
+     77.55002
+    ],
+    [
+     12.86781,
+     77.5503
+    ],
+    [
+     12.86693,
+     77.54826
+    ],
+    [
+     12.86439,
+     77.54831
+    ],
+    [
+     12.85963,
+     77.54505
+    ],
+    [
+     12.85828,
+     77.54639
+    ],
+    [
+     12.85545,
+     77.54645
+    ],
+    [
+     12.85129,
+     77.54481
+    ],
+    [
+     12.84969,
+     77.54566
+    ],
+    [
+     12.84852,
+     77.54432
+    ],
+    [
+     12.84437,
+     77.54431
+    ],
+    [
+     12.84333,
+     77.54168
+    ],
+    [
+     12.84496,
+     77.54049
+    ],
+    [
+     12.8453,
+     77.53833
+    ],
+    [
+     12.84174,
+     77.53757
+    ],
+    [
+     12.8397,
+     77.53343
+    ],
+    [
+     12.83995,
+     77.52352
+    ],
+    [
+     12.86117,
+     77.51841
+    ],
+    [
+     12.87057,
+     77.52298
+    ],
+    [
+     12.87218,
+     77.52027
+    ],
+    [
+     12.86788,
+     77.51544
+    ],
+    [
+     12.86811,
+     77.51172
+    ],
+    [
+     12.87703,
+     77.50459
+    ],
+    [
+     12.87222,
+     77.49753
+    ],
+    [
+     12.8734,
+     77.49521
+    ],
+    [
+     12.87193,
+     77.49483
+    ],
+    [
+     12.87235,
+     77.49284
+    ],
+    [
+     12.87075,
+     77.49182
+    ],
+    [
+     12.8716,
+     77.48461
+    ],
+    [
+     12.87412,
+     77.48311
+    ],
+    [
+     12.87411,
+     77.48109
+    ],
+    [
+     12.878,
+     77.48169
+    ],
+    [
+     12.87843,
+     77.47583
+    ],
+    [
+     12.88005,
+     77.47482
+    ],
+    [
+     12.88445,
+     77.4789
+    ],
+    [
+     12.88612,
+     77.47877
+    ],
+    [
+     12.88629,
+     77.48297
+    ],
+    [
+     12.88956,
+     77.48184
+    ],
+    [
+     12.88979,
+     77.47931
+    ],
+    [
+     12.89217,
+     77.47907
+    ],
+    [
+     12.89434,
+     77.47552
+    ],
+    [
+     12.8965,
+     77.47733
+    ],
+    [
+     12.8984,
+     77.47336
+    ],
+    [
+     12.8941,
+     77.47022
+    ],
+    [
+     12.88848,
+     77.46837
+    ],
+    [
+     12.89872,
+     77.46154
+    ],
+    [
+     12.8985,
+     77.46068
+    ],
+    [
+     12.90661,
+     77.46032
+    ],
+    [
+     12.90688,
+     77.46667
+    ],
+    [
+     12.91015,
+     77.4665
+    ],
+    [
+     12.91513,
+     77.47003
+    ],
+    [
+     12.92666,
+     77.47319
+    ],
+    [
+     12.92592,
+     77.4796
+    ],
+    [
+     12.92723,
+     77.47912
+    ],
+    [
+     12.92741,
+     77.48099
+    ],
+    [
+     12.9306,
+     77.4832
+    ],
+    [
+     12.93581,
+     77.48412
+    ],
+    [
+     12.93689,
+     77.48418
+    ],
+    [
+     12.93756,
+     77.47836
+    ],
+    [
+     12.94033,
+     77.47325
+    ],
+    [
+     12.94882,
+     77.47628
+    ],
+    [
+     12.94959,
+     77.47106
+    ],
+    [
+     12.9516,
+     77.47251
+    ],
+    [
+     12.95227,
+     77.47148
+    ],
+    [
+     12.95504,
+     77.472
+    ],
+    [
+     12.96039,
+     77.47528
+    ],
+    [
+     12.96367,
+     77.47228
+    ],
+    [
+     12.97004,
+     77.47502
+    ],
+    [
+     12.97567,
+     77.47484
+    ],
+    [
+     12.98366,
+     77.47328
+    ],
+    [
+     12.98671,
+     77.46841
+    ],
+    [
+     13.00256,
+     77.47527
+    ],
+    [
+     13.00645,
+     77.4754
+    ],
+    [
+     13.00727,
+     77.47284
+    ],
+    [
+     13.01907,
+     77.47837
+    ],
+    [
+     13.02927,
+     77.47961
+    ],
+    [
+     13.03154,
+     77.47694
+    ],
+    [
+     13.04058,
+     77.48257
+    ],
+    [
+     13.04435,
+     77.47957
+    ],
+    [
+     13.04851,
+     77.48008
+    ],
+    [
+     13.04507,
+     77.49099
+    ],
+    [
+     13.05157,
+     77.49247
+    ],
+    [
+     13.05061,
+     77.49729
+    ],
+    [
+     13.04446,
+     77.49575
+    ],
+    [
+     13.04391,
+     77.49801
+    ],
+    [
+     13.04253,
+     77.49807
+    ],
+    [
+     13.04181,
+     77.49629
+    ],
+    [
+     13.03975,
+     77.49611
+    ],
+    [
+     13.035,
+     77.4993
+    ],
+    [
+     13.02123,
+     77.49355
+    ],
+    [
+     13.01823,
+     77.49576
+    ],
+    [
+     13.01777,
+     77.49756
+    ],
+    [
+     13.01353,
+     77.49976
+    ],
+    [
+     13.00935,
+     77.49995
+    ],
+    [
+     13.00905,
+     77.4984
+    ],
+    [
+     13.00386,
+     77.49757
+    ],
+    [
+     13.00437,
+     77.49562
+    ],
+    [
+     13.00075,
+     77.49323
+    ],
+    [
+     12.99906,
+     77.49885
+    ],
+    [
+     12.99689,
+     77.50148
+    ],
+    [
+     12.99157,
+     77.49952
+    ],
+    [
+     12.98857,
+     77.49699
+    ],
+    [
+     12.99025,
+     77.50382
+    ],
+    [
+     12.98967,
+     77.50572
+    ],
+    [
+     12.99499,
+     77.50404
+    ],
+    [
+     12.99889,
+     77.50604
+    ],
+    [
+     12.99795,
+     77.51279
+    ],
+    [
+     13.0001,
+     77.5133
+    ],
+    [
+     13.00058,
+     77.51479
+    ],
+    [
+     12.99868,
+     77.5177
+    ],
+    [
+     12.99715,
+     77.51744
+    ],
+    [
+     12.99742,
+     77.51907
+    ],
+    [
+     13.00661,
+     77.51732
+    ],
+    [
+     13.01051,
+     77.51914
+    ],
+    [
+     13.01267,
+     77.51855
+    ],
+    [
+     13.01291,
+     77.52302
+    ],
+    [
+     13.01824,
+     77.52199
+    ],
+    [
+     13.02152,
+     77.52679
+    ],
+    [
+     13.0238,
+     77.52165
+    ],
+    [
+     13.03313,
+     77.51788
+    ],
+    [
+     13.04015,
+     77.5185
+    ],
+    [
+     13.04907,
+     77.52388
+    ],
+    [
+     13.05476,
+     77.53225
+    ],
+    [
+     13.05495,
+     77.54471
+    ],
+    [
+     13.05673,
+     77.54679
+    ]
+   ],
+   "center": [
+    12.9482,
+    77.4944
+   ],
+   "areaKm2": 115.7,
+   "demographics": {
+    "population2001": 212916,
+    "population2011": 371791,
+    "populationGrowthRate": 0.0573,
+    "populationBaseYear": 811382,
+    "csvAreaKm2": 126.0,
+    "boundaryRescaleFactor": 0.918,
+    "perCapitaIncomeINR": 4600.0,
+    "jobsShare": 0.04224,
+    "jobsBaseline": 114071
+   },
+   "mobility": {
+    "perCapitaTripRate": 1.27,
+    "averageTripLengthKm": 6.5,
+    "modeSharesRaw": {
+     "walk": 36.0,
+     "bicycle": 2.0,
+     "taxi": 0.0,
+     "auto": 6.0,
+     "twoWheeler": 27.0,
+     "carVan": 3.0,
+     "publicTransport": 26.0,
+     "slowMoving": 2.0
+    },
+    "modeShares": {
+     "walk": 0.3529,
+     "bicycle": 0.0196,
+     "taxi": 0.0,
+     "auto": 0.0588,
+     "twoWheeler": 0.2647,
+     "carVan": 0.0294,
+     "publicTransport": 0.2549,
+     "slowMoving": 0.0196
+    },
+    "tripsUnder15MinPct": 18.0,
+    "tripsUnder30MinPct": 33.0,
+    "dailyTrips": 1030455
+   },
+   "roads": {
+    "roadKm": 2226.7,
+    "laneKm": 4445.3,
+    "majorRoadKm": 245.5,
+    "majorCapacityPcuKmPerHr": 556666,
+    "byClass": {
+     "local": {
+      "km": 1751.0,
+      "laneKm": 3493.8,
+      "capacityPcuKmPerHr": 1048128.0,
+      "lanesTaggedKm": 13.8
+     },
+     "arterial": {
+      "km": 94.6,
+      "laneKm": 217.5,
+      "capacityPcuKmPerHr": 194880.1,
+      "lanesTaggedKm": 59.5
+     },
+     "sub_arterial": {
+      "km": 88.9,
+      "laneKm": 180.1,
+      "capacityPcuKmPerHr": 124792.1,
+      "lanesTaggedKm": 41.0
+     },
+     "collector": {
+      "km": 230.1,
+      "laneKm": 422.4,
+      "capacityPcuKmPerHr": 190071.5,
+      "lanesTaggedKm": 40.3
+     },
+     "expressway": {
+      "km": 62.0,
+      "laneKm": 131.7,
+      "capacityPcuKmPerHr": 236994.1,
+      "lanesTaggedKm": 57.4
+     }
+    }
+   },
+   "transit": {
+    "metroStations": [
+     "Goraguntepalya",
+     "Jalahalli",
+     "Jnanabharathi",
+     "Kengeri",
+     "Kengeri Bus Terminal",
+     "Manjunathanagara",
+     "Pantharapalya - Nayandahalli",
+     "Pattanagere",
+     "Peenya",
+     "Peenya Industry",
+     "Silk Institute",
+     "Thalaghattapura",
+     "Vajarahalli"
+    ],
+    "metroDailyBoardings": 64649,
+    "ptDailyTrips": 262665,
+    "busPeakBusKmPerHr": 3238,
+    "busPeakPcuKmPerHr": 7124
+   },
+   "waste": {
+    "collectedTpdApril2020": 207.0,
+    "collectedTpdMay2020": 242.0,
+    "generationTpd": 319.8,
+    "processingCapacityTpd": 230.0
+   },
+   "freight": {
+    "goodsPeakVehicles": 1367,
+    "goodsPeakPcuKmPerHr": 16590,
+    "freightDemandTpd": 9702
+   }
+  },
+  {
+   "id": "zone-dasarahalli",
+   "name": "Dasarahalli",
+   "csvName": "Dasarahalli",
+   "polygon": [
+    [
+     13.09216,
+     77.534
+    ],
+    [
+     13.09017,
+     77.53545
+    ],
+    [
+     13.08997,
+     77.54072
+    ],
+    [
+     13.08379,
+     77.53688
+    ],
+    [
+     13.08213,
+     77.52995
+    ],
+    [
+     13.07902,
+     77.52942
+    ],
+    [
+     13.07561,
+     77.53152
+    ],
+    [
+     13.06977,
+     77.53098
+    ],
+    [
+     13.06732,
+     77.53396
+    ],
+    [
+     13.06325,
+     77.5352
+    ],
+    [
+     13.06005,
+     77.53385
+    ],
+    [
+     13.05767,
+     77.53547
+    ],
+    [
+     13.05483,
+     77.5353
+    ],
+    [
+     13.05452,
+     77.53142
+    ],
+    [
+     13.04917,
+     77.52397
+    ],
+    [
+     13.03918,
+     77.5183
+    ],
+    [
+     13.03313,
+     77.51788
+    ],
+    [
+     13.02407,
+     77.52148
+    ],
+    [
+     13.02152,
+     77.52679
+    ],
+    [
+     13.01824,
+     77.52199
+    ],
+    [
+     13.01291,
+     77.52302
+    ],
+    [
+     13.01267,
+     77.51855
+    ],
+    [
+     13.01051,
+     77.51914
+    ],
+    [
+     13.00661,
+     77.51732
+    ],
+    [
+     12.99742,
+     77.51907
+    ],
+    [
+     12.99715,
+     77.51744
+    ],
+    [
+     12.99868,
+     77.5177
+    ],
+    [
+     13.00058,
+     77.51479
+    ],
+    [
+     13.0001,
+     77.5133
+    ],
+    [
+     12.99795,
+     77.51279
+    ],
+    [
+     12.99889,
+     77.50604
+    ],
+    [
+     12.99499,
+     77.50404
+    ],
+    [
+     12.98967,
+     77.50572
+    ],
+    [
+     12.99025,
+     77.50382
+    ],
+    [
+     12.98857,
+     77.49699
+    ],
+    [
+     12.99157,
+     77.49952
+    ],
+    [
+     12.99689,
+     77.50148
+    ],
+    [
+     12.99906,
+     77.49885
+    ],
+    [
+     13.00075,
+     77.49323
+    ],
+    [
+     13.00437,
+     77.49562
+    ],
+    [
+     13.00386,
+     77.49757
+    ],
+    [
+     13.01188,
+     77.49999
+    ],
+    [
+     13.01777,
+     77.49756
+    ],
+    [
+     13.01823,
+     77.49576
+    ],
+    [
+     13.02115,
+     77.49356
+    ],
+    [
+     13.035,
+     77.4993
+    ],
+    [
+     13.03975,
+     77.49611
+    ],
+    [
+     13.04181,
+     77.49629
+    ],
+    [
+     13.04253,
+     77.49807
+    ],
+    [
+     13.04391,
+     77.49801
+    ],
+    [
+     13.04446,
+     77.49575
+    ],
+    [
+     13.05061,
+     77.49729
+    ],
+    [
+     13.05157,
+     77.49247
+    ],
+    [
+     13.05692,
+     77.491
+    ],
+    [
+     13.06212,
+     77.49306
+    ],
+    [
+     13.07209,
+     77.49311
+    ],
+    [
+     13.0719,
+     77.49946
+    ],
+    [
+     13.07795,
+     77.50737
+    ],
+    [
+     13.07798,
+     77.50896
+    ],
+    [
+     13.07558,
+     77.51131
+    ],
+    [
+     13.07425,
+     77.51797
+    ],
+    [
+     13.07967,
+     77.51898
+    ],
+    [
+     13.07915,
+     77.52088
+    ],
+    [
+     13.08092,
+     77.52322
+    ],
+    [
+     13.09307,
+     77.52378
+    ],
+    [
+     13.09216,
+     77.534
+    ]
+   ],
+   "center": [
+    13.04087,
+    77.50755
+   ],
+   "areaKm2": 29.3,
+   "demographics": {
+    "population2001": 86794,
+    "population2011": 131555,
+    "populationGrowthRate": 0.0425,
+    "populationBaseYear": 235491,
+    "csvAreaKm2": 61.0,
+    "boundaryRescaleFactor": 0.481,
+    "perCapitaIncomeINR": 5800.0,
+    "jobsShare": 0.00614,
+    "jobsBaseline": 16571
+   },
+   "mobility": {
+    "perCapitaTripRate": 1.48,
+    "averageTripLengthKm": 6.33,
+    "modeSharesRaw": {
+     "walk": 37.0,
+     "bicycle": 3.0,
+     "taxi": 0.0,
+     "auto": 4.0,
+     "twoWheeler": 25.0,
+     "carVan": 3.0,
+     "publicTransport": 28.0,
+     "slowMoving": 3.0
+    },
+    "modeShares": {
+     "walk": 0.3592,
+     "bicycle": 0.0291,
+     "taxi": 0.0,
+     "auto": 0.0388,
+     "twoWheeler": 0.2427,
+     "carVan": 0.0291,
+     "publicTransport": 0.2718,
+     "slowMoving": 0.0291
+    },
+    "tripsUnder15MinPct": 13.0,
+    "tripsUnder30MinPct": 22.0,
+    "dailyTrips": 348527
+   },
+   "roads": {
+    "roadKm": 682.5,
+    "laneKm": 1360.7,
+    "majorRoadKm": 41.7,
+    "majorCapacityPcuKmPerHr": 73249,
+    "byClass": {
+     "local": {
+      "km": 586.0,
+      "laneKm": 1170.2,
+      "capacityPcuKmPerHr": 351063.4,
+      "lanesTaggedKm": 0.9
+     },
+     "collector": {
+      "km": 54.8,
+      "laneKm": 106.9,
+      "capacityPcuKmPerHr": 48084.7,
+      "lanesTaggedKm": 6.7
+     },
+     "sub_arterial": {
+      "km": 23.3,
+      "laneKm": 46.7,
+      "capacityPcuKmPerHr": 30751.7,
+      "lanesTaggedKm": 5.1
+     },
+     "arterial": {
+      "km": 13.2,
+      "laneKm": 26.4,
+      "capacityPcuKmPerHr": 23629.3,
+      "lanesTaggedKm": 9.3
+     },
+     "expressway": {
+      "km": 5.2,
+      "laneKm": 10.5,
+      "capacityPcuKmPerHr": 18867.6,
+      "lanesTaggedKm": 5.2
+     }
+    }
+   },
+   "transit": {
+    "metroStations": [
+     "Dasarahalli",
+     "Nagasandra"
+    ],
+    "metroDailyBoardings": 22112,
+    "ptDailyTrips": 94745,
+    "busPeakBusKmPerHr": 1168,
+    "busPeakPcuKmPerHr": 2570
+   },
+   "waste": {
+    "collectedTpdApril2020": 102.0,
+    "collectedTpdMay2020": 123.0,
+    "generationTpd": 151.4,
+    "processingCapacityTpd": 66.8
+   },
+   "freight": {
+    "goodsPeakVehicles": 199,
+    "goodsPeakPcuKmPerHr": 2347,
+    "freightDemandTpd": 2344
+   }
+  }
+ ]
+}

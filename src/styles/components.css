@@ -154,6 +154,34 @@
   border: 1px solid var(--color-status-info);
 }
 
+/* Data provenance tags (zone inspector) */
+.prov-tag {
+  display: inline-block;
+  margin-left: var(--space-1);
+  padding: 0 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+  border: 1px solid transparent;
+}
+
+.prov-measured {
+  color: #6ee7b7;
+  border-color: var(--color-status-safe);
+}
+
+.prov-derived {
+  color: #bfdbfe;
+  border-color: var(--color-status-info);
+}
+
+.prov-estimated {
+  color: #fcd34d;
+  border-color: var(--color-status-moderate);
+}
+
 /* KPI Cards */
 .kpi-card {
   padding: var(--space-3) var(--space-4);

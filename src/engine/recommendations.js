@@ -1,5 +1,6 @@
 /**
  * CityFlow Deterministic Policy Recommendation Engine
+ * Thresholds use the utilisation scale of the simulation engine (100 = at capacity).
  * 
  * Generates transparent, rule-derived operational policies and interventions
  * based directly on calculated deltas between the current scenario and calibrated baseline.
@@ -54,7 +55,7 @@ export function generatePolicyRecommendations(baselineResult = {}, currentResult
     recommendations.push({
       id: 'rec-overall-increase',
       category: 'Overall',
-      severity: currOverall >= 70 ? 'critical' : 'moderate',
+      severity: currOverall > 100 ? 'critical' : 'moderate',
       text: 'The current scenario produces higher overall pressure than the calibrated baseline.'
     });
   } else if (deltaOverall <= -3.0) {
@@ -67,9 +68,9 @@ export function generatePolicyRecommendations(baselineResult = {}, currentResult
   }
 
   // 2. Traffic Subsystem Rules
-  if (currTraffic >= 70.0 || deltaTraffic >= 15.0) {
-    const levelText = currTraffic >= 70.0
-      ? 'Traffic pressure has reached a critical level.'
+  if (currTraffic > 100 || deltaTraffic >= 15.0) {
+    const levelText = currTraffic > 100
+      ? 'Peak traffic demand exceeds arterial road capacity city-wide.'
       : 'Traffic pressure has risen sharply relative to the baseline.';
     // Advising more transit is meaningless when transit is already expanded
     const actionText = publicTransitModifier >= 1.5
@@ -105,7 +106,7 @@ export function generatePolicyRecommendations(baselineResult = {}, currentResult
     recommendations.push({
       id: 'rec-logistics-elevated',
       category: 'Logistics',
-      severity: currLogistics >= 70 ? 'critical' : 'moderate',
+      severity: currLogistics > 100 ? 'critical' : 'moderate',
       text: 'Freight pressure has increased relative to the baseline. Reducing delivery volume or increasing freight-handling capacity would reduce modeled logistics pressure.'
     });
   }
@@ -115,8 +116,8 @@ export function generatePolicyRecommendations(baselineResult = {}, currentResult
     recommendations.push({
       id: 'rec-waste-elevated',
       category: 'Waste',
-      severity: currWaste >= 70 ? 'critical' : 'moderate',
-      text: 'Waste pressure has increased relative to the baseline. Increasing collection capacity would provide additional modeled collection throughput.'
+      severity: currWaste > 100 ? 'critical' : 'moderate',
+      text: 'Waste pressure has increased relative to the baseline: congestion lengthens collection rounds, and processing capacity is already below generation. Off-peak collection or added processing capacity would relieve it.'
     });
   }
 
@@ -126,7 +127,7 @@ export function generatePolicyRecommendations(baselineResult = {}, currentResult
       id: 'rec-corridor-closed',
       category: 'Corridor',
       severity: 'critical',
-      text: 'The selected corridor closure reduces modeled road capacity and increases pressure in affected zones. Consider an alternate route or restoring corridor capacity.'
+      text: 'The corridor closure removes its arterial capacity in every zone it crosses while demand stays the same. Plan diversions and staged works, or restore capacity at peak hours.'
     });
   }
 

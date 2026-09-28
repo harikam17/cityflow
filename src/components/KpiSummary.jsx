@@ -1,42 +1,43 @@
 import React from 'react';
 import { formatPressureScore, getPressureSeverity, getSeverityLabel } from '../utils/formatters';
 
-export default function KpiSummary({ citySummary = {} }) {
+export default function KpiSummary({ citySummary = {}, observedPeakSpeedKmph }) {
   const {
     overallPressure = 0,
     trafficPressure = 0,
     logisticsPressure = 0,
-    wastePressure = 0
+    wastePressure = 0,
+    peakSpeedKmph = 0
   } = citySummary;
 
   const kpis = [
     {
       id: 'kpi-overall',
       label: 'OVERALL PRESSURE',
-      value: `${formatPressureScore(overallPressure)} / 100`,
+      value: formatPressureScore(overallPressure),
       score: overallPressure,
-      sublabel: 'Composite Municipal Strain'
+      sublabel: 'Weighted traffic, logistics and waste utilisation'
     },
     {
       id: 'kpi-traffic',
       label: 'TRAFFIC PRESSURE',
       value: formatPressureScore(trafficPressure),
       score: trafficPressure,
-      sublabel: 'Volume / Capacity Index'
+      sublabel: 'Peak demand / arterial road capacity'
     },
     {
       id: 'kpi-logistics',
       label: 'LOGISTICS PRESSURE',
       value: formatPressureScore(logisticsPressure),
       score: logisticsPressure,
-      sublabel: 'Freight Demand & Dispatch'
+      sublabel: 'Freight fleet utilisation under congestion'
     },
     {
       id: 'kpi-waste',
       label: 'WASTE PRESSURE',
       value: formatPressureScore(wastePressure),
       score: wastePressure,
-      sublabel: 'Collection Throughput'
+      sublabel: 'Waste generated / processing capacity'
     }
   ];
 
@@ -61,6 +62,18 @@ export default function KpiSummary({ citySummary = {} }) {
             </div>
           );
         })}
+
+        <div className="panel kpi-card">
+          <div className="kpi-header">
+            <span className="kpi-label">PEAK SPEED</span>
+          </div>
+          <div className="kpi-value-row">
+            <span className="kpi-value tabular-nums">{peakSpeedKmph.toFixed(1)} km/h</span>
+          </div>
+          <p className="kpi-sublabel">
+            City-wide peak-hour average (CMP 2020 observed: {observedPeakSpeedKmph} km/h)
+          </p>
+        </div>
       </div>
     </section>
   );

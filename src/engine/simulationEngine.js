@@ -1,251 +1,203 @@
 /**
- * CityFlow Deterministic Simulation Engine
- * 
- * Implements pure, transparent rule-based mathematical formulas
- * to evaluate urban pressure across traffic, logistics, and waste domains.
- * 
- * All functions are deterministic and free of external side-effects or UI dependencies.
+ * CityFlow Simulation Engine
+ *
+ * Pure, deterministic functions that turn the Bengaluru dataset
+ * (src/data/generated/bengaluruDataset.json, built by scripts/dataset/build_dataset.py)
+ * and a what-if scenario into per-zone and city-wide pressure indices.
+ *
+ * Every pressure index is a utilisation percentage: 100 means demand equals capacity.
+ *   traffic   = peak-direction PCU-km demand / arterial-network PCU-km capacity
+ *   logistics = freight fleet utilisation, stretched by congestion
+ *   waste     = waste generated / allocated processing capacity, stretched by congestion
+ * See ARCHITECTURE.md for the derivation of each input.
  */
 
-// Model Constants & Coefficients
-export const MODEL_COEFFICIENTS = {
-  // Congestion curve exponent based on standard civil engineering Volume-to-Capacity (V/C) formulations
-  VOLUME_CAPACITY_EXPONENT: 1.4,
+export const PRIVATE_MODES = ['twoWheeler', 'carVan', 'auto', 'taxi'];
 
-  // Cascade multiplier: traffic congestion impact on freight logistics turnaround and delivery delays
-  TRAFFIC_LOGISTICS_CASCADE: 0.35,
-
-  // Cascade multiplier: road congestion disruption factor on municipal waste collection routes
-  TRAFFIC_WASTE_CASCADE: 0.25,
-
-  // Capacity reduction penalty applied to road network when connected corridor is closed
-  CORRIDOR_CLOSURE_PENALTY: 0.70,
-
-  // Mode-shift coefficient: proportion of expanded public transit capacity that shifts private vehicle trips
-  TRANSIT_MODE_SHIFT_EXPANSION: 0.20,
-
-  // Spillover coefficient: proportion of lost transit riders that convert to private vehicles during transit service cuts
-  TRANSIT_SPILLOVER_REDUCTION: 0.15,
-
-  // Component weights for the composite overall pressure index
-  WEIGHT_TRAFFIC: 0.40,
-  WEIGHT_LOGISTICS: 0.30,
-  WEIGHT_WASTE: 0.30
+export const SCENARIO_DEFAULTS = {
+  privateVehicleModifier: 1.0,
+  publicTransitModifier: 1.0,
+  deliveryFreightModifier: 1.0,
+  closedCorridorId: null
 };
 
-// Corridor to Zone mapping
-export const CORRIDOR_ZONE_MAPPING = {
-  'corridor-east-central': ['zone-east', 'zone-west'],
-  'corridor-tech-orr': ['zone-mahadevapura']
-};
-
-/**
- * Utility: Clamps a numerical value within [min, max] bounds.
- */
-export function clamp(val, min = 0, max = 100) {
-  if (typeof val !== 'number' || isNaN(val)) return min;
-  return Math.min(max, Math.max(min, val));
+function assumption(dataset, key) {
+  return dataset.constants.assumptions[key].value;
 }
 
-/**
- * Determines if a given zone is affected by the specified closed corridor.
- */
-export function isZoneAffectedByClosure(zoneId, closedCorridorId) {
-  if (!closedCorridorId) return false;
-  const affectedZones = CORRIDOR_ZONE_MAPPING[closedCorridorId];
-  return Array.isArray(affectedZones) && affectedZones.includes(zoneId);
-}
-
-/**
- * Calculates effective traffic demand (vehicles/hour) for a zone under scenario modifiers.
- * Models bidirectional public transit mode-shift effect deterministically.
- */
-export function calculateEffectiveTrafficDemand(zone, privateMod = 1.0, transitMod = 1.0, freightMod = 1.0) {
-  const basePrivate = Math.max(0, zone.baselinePrivateVehiclesPerHour || 0);
-  const baseCommercial = Math.max(0, zone.baselineCommercialVehiclesPerHour || 0);
-  const hourlyTransitTrips = Math.max(0, (zone.transitDailyCapacityTrips || 0) / 24);
-
-  let adjustedPrivate = basePrivate * privateMod;
-
-  if (transitMod > 1.0) {
-    // Mode diversion: Increased transit service absorbs private car trips
-    const excessTransitCapacity = (transitMod - 1.0) * hourlyTransitTrips;
-    const divertedTrips = excessTransitCapacity * MODEL_COEFFICIENTS.TRANSIT_MODE_SHIFT_EXPANSION;
-    // Bounded diversion: Cannot reduce private trips below 35% of baseline
-    const maxDiverted = basePrivate * 0.65;
-    const actualDiverted = Math.min(divertedTrips, maxDiverted);
-    adjustedPrivate = Math.max(basePrivate * 0.35, adjustedPrivate - actualDiverted);
-  } else if (transitMod < 1.0) {
-    // Spillover: Decreased transit service pushes displaced riders onto roads as cars/ride-hails
-    const lostTransitTrips = (1.0 - transitMod) * hourlyTransitTrips;
-    const spilloverTrips = lostTransitTrips * MODEL_COEFFICIENTS.TRANSIT_SPILLOVER_REDUCTION;
-    adjustedPrivate = adjustedPrivate + spilloverTrips;
-  }
-
-  const adjustedCommercial = baseCommercial * freightMod;
-  return Math.max(0, adjustedPrivate + adjustedCommercial);
-}
-
-/**
- * Calculates effective road capacity (vehicles/hour) for a zone considering closures.
- */
-export function calculateEffectiveRoadCapacity(zone, closedCorridorId = null) {
-  const baseCapacity = Math.max(1, zone.roadCapacityVehiclesPerHour || 1);
-  const isAffected = isZoneAffectedByClosure(zone.id, closedCorridorId);
-  return isAffected
-    ? baseCapacity * MODEL_COEFFICIENTS.CORRIDOR_CLOSURE_PENALTY
-    : baseCapacity;
-}
-
-/**
- * Calculates traffic pressure score (0 - 100) using the non-linear volume/capacity formula.
- * Formula: clamp((Demand / Capacity)^1.4 * 100, 0, 100)
- */
-export function calculateTrafficPressure(effectiveDemand, effectiveCapacity) {
-  if (effectiveCapacity <= 0) return 100;
-  const vcRatio = effectiveDemand / effectiveCapacity;
-  const rawScore = Math.pow(vcRatio, MODEL_COEFFICIENTS.VOLUME_CAPACITY_EXPONENT) * 100;
-  return clamp(rawScore, 0, 100);
-}
-
-/**
- * Calculates logistics pressure score (0 - 100) based on delivery demand, fleet capacity, and traffic delay cascade.
- * Formula: clamp((Delivery Demand / Fleet Capacity) * (1 + 0.35 * Traffic Pressure / 100) * 100, 0, 100)
- */
-export function calculateLogisticsPressure(zone, freightMod = 1.0, trafficPressure = 0) {
-  const baseDemand = Math.max(0, zone.freightDemandTonnesPerDay || 0);
-  const fleetCapacity = Math.max(1, zone.freightFleetCapacityTonnesPerDay || 1);
-  const effectiveDemand = baseDemand * freightMod;
-
-  const demandCapacityRatio = effectiveDemand / fleetCapacity;
-  const trafficImpactMultiplier = 1 + (MODEL_COEFFICIENTS.TRAFFIC_LOGISTICS_CASCADE * (trafficPressure / 100));
-  const rawScore = demandCapacityRatio * trafficImpactMultiplier * 100;
-  return clamp(rawScore, 0, 100);
-}
-
-/**
- * Calculates waste pressure score (0 - 100) based on waste generation and traffic-delayed collection fleet capacity.
- * Formula: Effective Collection Capacity = Base Capacity * (1 - 0.25 * Traffic Pressure / 100)
- *          Waste Pressure = clamp((Waste Generation / Effective Collection Capacity) * 100, 0, 100)
- */
-export function calculateWastePressure(zone, trafficPressure = 0) {
-  const wasteGen = Math.max(0, zone.wasteGenerationTonnesPerDay || 0);
-  const baseCollectionCapacity = Math.max(1, zone.wasteCollectionCapacityTonnesPerDay || 1);
-
-  // Road congestion delays waste collection truck routes, reducing effective throughput
-  const disruptionFactor = Math.min(0.85, (MODEL_COEFFICIENTS.TRAFFIC_WASTE_CASCADE * trafficPressure) / 100);
-  const effectiveCollectionCapacity = Math.max(1, baseCollectionCapacity * (1 - disruptionFactor));
-
-  const rawScore = (wasteGen / effectiveCollectionCapacity) * 100;
-  return clamp(rawScore, 0, 100);
-}
-
-/**
- * Calculates composite overall pressure score (0 - 100) from weighted component metrics.
- * Formula: 0.40 * Traffic + 0.30 * Logistics + 0.30 * Waste
- */
-export function calculateOverallPressure(trafficPressure, logisticsPressure, wastePressure) {
-  const composite = 
-    (MODEL_COEFFICIENTS.WEIGHT_TRAFFIC * trafficPressure) +
-    (MODEL_COEFFICIENTS.WEIGHT_LOGISTICS * logisticsPressure) +
-    (MODEL_COEFFICIENTS.WEIGHT_WASTE * wastePressure);
-  return clamp(composite, 0, 100);
-}
-
-/**
- * Computes complete simulation outputs for a single zone.
- */
-export function calculateZoneSimulation(zone, scenario = {}) {
-  const {
-    privateVehicleModifier = 1.0,
-    publicTransitModifier = 1.0,
-    deliveryFreightModifier = 1.0,
-    closedCorridorId = null
-  } = scenario;
-
-  const effectiveTrafficDemand = calculateEffectiveTrafficDemand(
-    zone,
-    privateVehicleModifier,
-    publicTransitModifier,
-    deliveryFreightModifier
-  );
-  const effectiveRoadCapacity = calculateEffectiveRoadCapacity(zone, closedCorridorId);
-
-  const trafficPressure = calculateTrafficPressure(effectiveTrafficDemand, effectiveRoadCapacity);
-  const logisticsPressure = calculateLogisticsPressure(zone, deliveryFreightModifier, trafficPressure);
-  const wastePressure = calculateWastePressure(zone, trafficPressure);
-  const overallPressure = calculateOverallPressure(trafficPressure, logisticsPressure, wastePressure);
-
+export function sanitizeScenario(scenario = {}) {
+  const num = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
   return {
-    id: zone.id,
-    name: zone.name,
-    type: zone.type,
-    center: zone.center,
-    polygon: zone.polygon,
-    description: zone.description,
-    mobility: zone.mobility || null,
-    // Calculated pressure indices (0 - 100)
-    trafficPressure: Number(trafficPressure.toFixed(1)),
-    logisticsPressure: Number(logisticsPressure.toFixed(1)),
-    wastePressure: Number(wastePressure.toFixed(1)),
-    overallPressure: Number(overallPressure.toFixed(1)),
-    // Internal operational demand and capacity variables (Modelled/Calibrated)
-    trafficDemand: Math.round(effectiveTrafficDemand),
-    roadCapacity: Math.round(effectiveRoadCapacity),
-    deliveryDemand: Math.round(zone.freightDemandTonnesPerDay * deliveryFreightModifier),
-    fleetCapacity: Math.round(zone.freightFleetCapacityTonnesPerDay),
-    wasteGeneration: Math.round(zone.wasteGenerationTonnesPerDay),
-    wasteCollectionCapacity: Math.round(zone.wasteCollectionCapacityTonnesPerDay),
-    isCorridorClosed: isZoneAffectedByClosure(zone.id, closedCorridorId)
-  };
-}
-
-/**
- * Computes city-wide average summary metrics from an array of zone simulation results.
- */
-export function calculateCitySummary(zoneResults = []) {
-  if (!zoneResults.length) {
-    return {
-      trafficPressure: 0,
-      logisticsPressure: 0,
-      wastePressure: 0,
-      overallPressure: 0
-    };
-  }
-
-  const count = zoneResults.length;
-  const sum = zoneResults.reduce((acc, z) => ({
-    traffic: acc.traffic + z.trafficPressure,
-    logistics: acc.logistics + z.logisticsPressure,
-    waste: acc.waste + z.wastePressure,
-    overall: acc.overall + z.overallPressure
-  }), { traffic: 0, logistics: 0, waste: 0, overall: 0 });
-
-  return {
-    trafficPressure: Number((sum.traffic / count).toFixed(1)),
-    logisticsPressure: Number((sum.logistics / count).toFixed(1)),
-    wastePressure: Number((sum.waste / count).toFixed(1)),
-    overallPressure: Number((sum.overall / count).toFixed(1))
-  };
-}
-
-/**
- * Main Entry Point: Runs the full city simulation for all zones given scenario inputs.
- */
-export function calculateCitySimulation(zones = [], scenario = {}) {
-  const sanitizedScenario = {
-    privateVehicleModifier: typeof scenario.privateVehicleModifier === 'number' ? scenario.privateVehicleModifier : 1.0,
-    publicTransitModifier: typeof scenario.publicTransitModifier === 'number' ? scenario.publicTransitModifier : 1.0,
-    deliveryFreightModifier: typeof scenario.deliveryFreightModifier === 'number' ? scenario.deliveryFreightModifier : 1.0,
+    privateVehicleModifier: num(scenario.privateVehicleModifier, 1.0),
+    publicTransitModifier: num(scenario.publicTransitModifier, 1.0),
+    deliveryFreightModifier: num(scenario.deliveryFreightModifier, 1.0),
     closedCorridorId: scenario.closedCorridorId || null
   };
+}
 
-  const zoneResults = zones.map(zone => calculateZoneSimulation(zone, sanitizedScenario));
-  const citySummary = calculateCitySummary(zoneResults);
+/**
+ * Daily resident trips by private mode after the transit-service change and the
+ * private-vehicle modifier. Riders gained or lost by transit move to or from the
+ * private modes in proportion to their existing shares.
+ */
+export function calculateZoneTrips(zone, dataset, scenario) {
+  const { dailyTrips, modeShares } = zone.mobility;
+  const elasticity = assumption(dataset, 'transitServiceElasticity');
+
+  const basePt = dailyTrips * modeShares.publicTransport;
+  const basePrivate = Object.fromEntries(PRIVATE_MODES.map((m) => [m, dailyTrips * modeShares[m]]));
+  const privateTotal = PRIVATE_MODES.reduce((s, m) => s + basePrivate[m], 0);
+
+  // Positive = riders gained by transit. Cannot lose more riders than exist or gain more than drive today.
+  const rawShift = basePt * elasticity * (scenario.publicTransitModifier - 1);
+  const ptShift = Math.max(-basePt, Math.min(privateTotal, rawShift));
+
+  const privateTrips = {};
+  for (const m of PRIVATE_MODES) {
+    const share = privateTotal > 0 ? basePrivate[m] / privateTotal : 0;
+    privateTrips[m] = Math.max(0, basePrivate[m] - ptShift * share) * scenario.privateVehicleModifier;
+  }
+
+  return { ptTrips: basePt + ptShift, ptShift, privateTrips };
+}
+
+/** Peak-hour vehicles and PCU-km generated by a zone's residents. */
+export function calculateResidentPeakLoad(zone, trips, dataset) {
+  const { occupancy, pcu } = dataset.constants;
+  const phf = assumption(dataset, 'peakHourFactor');
+  const tripLength = zone.mobility.averageTripLengthKm;
+
+  const peakVehicles = {};
+  let pcuKm = 0;
+  for (const m of PRIVATE_MODES) {
+    peakVehicles[m] = (trips.privateTrips[m] * phf) / occupancy[m];
+    pcuKm += peakVehicles[m] * pcu[m] * tripLength;
+  }
+  return { peakVehicles, pcuKm };
+}
+
+/** Arterial-network capacity after any corridor closure. */
+export function calculateEffectiveCapacity(zone, dataset, closedCorridorId) {
+  const base = zone.roads.majorCapacityPcuKmPerHr;
+  const corridor = closedCorridorId ? dataset.corridors.find((c) => c.id === closedCorridorId) : null;
+  const lost = corridor?.zones?.[zone.id] ?? 0;
+  return { capacity: Math.max(1, base - lost), lostCapacity: lost };
+}
+
+/** Travel-time index from the calibrated delay curve: 1 + alpha * (V/C)^beta. */
+export function travelTimeIndex(vc, dataset) {
+  const alpha = dataset.constants.calibration.bprAlpha;
+  const beta = assumption(dataset, 'bprBeta');
+  return 1 + alpha * Math.pow(Math.max(0, vc), beta);
+}
+
+/**
+ * Congestion stretch on delivery / collection cycles, relative to the city-average
+ * baseline congestion the fleets are sized for. Only the driving share of a cycle stretches.
+ */
+export function cycleTimeFactor(tti, dataset) {
+  const s = assumption(dataset, 'travelShareOfCycleTime');
+  const reference = dataset.constants.calibration.targetTravelTimeIndex;
+  return (1 - s) + s * (tti / reference);
+}
+
+export function calculateOverallPressure(traffic, logistics, waste, dataset) {
+  const w = assumption(dataset, 'overallWeights');
+  return w.traffic * traffic + w.logistics * logistics + w.waste * waste;
+}
+
+const round1 = (v) => Number(v.toFixed(1));
+
+/** Main entry point: full simulation for every zone plus a city summary. */
+export function calculateCitySimulation(dataset, rawScenario = {}) {
+  const scenario = sanitizeScenario(rawScenario);
+  const split = assumption(dataset, 'tripEndSplit');
+  const majorShare = assumption(dataset, 'majorRoadVehicleKmShare');
+  const directional = assumption(dataset, 'peakDirectionShare') / 0.5;
+  const freeFlow = assumption(dataset, 'freeFlowSpeedKmph');
+  const fleetUtilisation = assumption(dataset, 'freightFleetUtilisation');
+
+  // Pass 1: resident-generated load (needed city-wide for the attraction half of trip ends)
+  const pass1 = dataset.zones.map((zone) => {
+    const trips = calculateZoneTrips(zone, dataset, scenario);
+    return { zone, trips, resident: calculateResidentPeakLoad(zone, trips, dataset) };
+  });
+  const cityResidentPcuKm = pass1.reduce((s, p) => s + p.resident.pcuKm, 0);
+
+  // Pass 2: zone demand, capacity and pressures
+  const zones = pass1.map(({ zone, trips, resident }) => {
+    const privatePcuKm = split * resident.pcuKm + (1 - split) * cityResidentPcuKm * zone.demographics.jobsShare;
+    const busPcuKm = zone.transit.busPeakPcuKmPerHr * scenario.publicTransitModifier;
+    const goodsPcuKm = zone.freight.goodsPeakPcuKmPerHr * scenario.deliveryFreightModifier;
+    const totalPcuKm = privatePcuKm + busPcuKm + goodsPcuKm;
+    const peakDirectionDemand = totalPcuKm * majorShare * directional;
+
+    const { capacity, lostCapacity } = calculateEffectiveCapacity(zone, dataset, scenario.closedCorridorId);
+    const vc = peakDirectionDemand / capacity;
+    const tti = travelTimeIndex(vc, dataset);
+    const cycle = cycleTimeFactor(tti, dataset);
+
+    const trafficPressure = vc * 100;
+    const logisticsPressure = fleetUtilisation * scenario.deliveryFreightModifier * cycle * 100;
+    const wastePressure = (zone.waste.generationTpd / zone.waste.processingCapacityTpd) * cycle * 100;
+    const overallPressure = calculateOverallPressure(trafficPressure, logisticsPressure, wastePressure, dataset);
+
+    return {
+      id: zone.id,
+      name: zone.name,
+      center: zone.center,
+      polygon: zone.polygon,
+      source: zone,
+      // Pressure indices (utilisation %, 100 = at capacity)
+      trafficPressure: round1(trafficPressure),
+      logisticsPressure: round1(logisticsPressure),
+      wastePressure: round1(wastePressure),
+      overallPressure: round1(overallPressure),
+      // Traffic internals
+      peakVehicles: Object.fromEntries(Object.entries(resident.peakVehicles).map(([k, v]) => [k, Math.round(v)])),
+      demandPcuKmPerHr: Math.round(peakDirectionDemand),
+      totalPcuKmPerHr: Math.round(totalPcuKm),
+      capacityPcuKmPerHr: Math.round(capacity),
+      lostCapacityPcuKmPerHr: Math.round(lostCapacity),
+      volumeCapacityRatio: Number(vc.toFixed(2)),
+      travelTimeIndex: Number(tti.toFixed(2)),
+      peakSpeedKmph: round1(freeFlow / tti),
+      // Transit
+      ptDailyTrips: Math.round(trips.ptTrips),
+      ptShiftTrips: Math.round(trips.ptShift),
+      // Freight and waste
+      freightDemandTpd: Math.round(zone.freight.freightDemandTpd * scenario.deliveryFreightModifier),
+      goodsPeakVehicles: Math.round(zone.freight.goodsPeakVehicles * scenario.deliveryFreightModifier),
+      wasteGenerationTpd: zone.waste.generationTpd,
+      wasteProcessingCapacityTpd: zone.waste.processingCapacityTpd,
+      cycleTimeFactor: Number(cycle.toFixed(2)),
+      isCorridorClosed: lostCapacity > 0
+    };
+  });
+
+  return { zones, citySummary: calculateCitySummary(zones, dataset), scenario };
+}
+
+/** City-wide indices, weighted by where the load is rather than averaged across zones. */
+export function calculateCitySummary(zones = [], dataset) {
+  if (!zones.length) {
+    return { trafficPressure: 0, logisticsPressure: 0, wastePressure: 0, overallPressure: 0, peakSpeedKmph: 0 };
+  }
+  const sum = (f) => zones.reduce((s, z) => s + f(z), 0);
+
+  // V/C as experienced by traffic: weighted by vehicle-km, so a gridlocked core is not averaged away by empty outskirts
+  const traffic = sum((z) => z.trafficPressure * z.demandPcuKmPerHr) / sum((z) => z.demandPcuKmPerHr);
+  const freight = sum((z) => z.freightDemandTpd);
+  const logistics = freight > 0 ? sum((z) => z.logisticsPressure * z.freightDemandTpd) / freight : 0;
+  const waste = (sum((z) => z.wasteGenerationTpd * z.cycleTimeFactor) / sum((z) => z.wasteProcessingCapacityTpd)) * 100;
+  // Harmonic mean speed weighted by vehicle-km, i.e. total distance / total time
+  const speed = sum((z) => z.totalPcuKmPerHr) / sum((z) => z.totalPcuKmPerHr / z.peakSpeedKmph);
 
   return {
-    zones: zoneResults,
-    citySummary,
-    scenario: sanitizedScenario
+    trafficPressure: round1(traffic),
+    logisticsPressure: round1(logistics),
+    wastePressure: round1(waste),
+    overallPressure: round1(calculateOverallPressure(traffic, logistics, waste, dataset)),
+    peakSpeedKmph: round1(speed)
   };
 }
