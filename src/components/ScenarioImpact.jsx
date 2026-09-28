@@ -40,19 +40,15 @@ export default function ScenarioImpact({
   currentResult = {},
   scenario = {}
 }) {
-  const baseSummary = baselineResult.citySummary || {
-    overallPressure: 51.7,
-    trafficPressure: 49.7,
-    logisticsPressure: 53.6,
-    wastePressure: 52.4
+  const emptySummary = {
+    overallPressure: 0,
+    trafficPressure: 0,
+    logisticsPressure: 0,
+    wastePressure: 0
   };
 
-  const currSummary = currentResult.citySummary || {
-    overallPressure: 51.7,
-    trafficPressure: 49.7,
-    logisticsPressure: 53.6,
-    wastePressure: 52.4
-  };
+  const baseSummary = baselineResult.citySummary || emptySummary;
+  const currSummary = currentResult.citySummary || emptySummary;
 
   const baseZones = baselineResult.zones || [];
   const currZones = currentResult.zones || [];

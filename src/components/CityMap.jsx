@@ -5,7 +5,8 @@ import { getPressureSeverity, getSeverityLabel, getSeverityColor, formatPressure
 export default function CityMap({
   zones = [],
   selectedZoneId,
-  onSelectZone
+  onSelectZone,
+  onInspectZone
 }) {
   const mapCenter = [12.960, 77.615];
   const defaultZoom = 12;
@@ -115,9 +116,9 @@ export default function CityMap({
                         <button
                           type="button"
                           className="btn btn-sm btn-primary popup-inspect-btn"
-                          onClick={() => onSelectZone(zone.id)}
+                          onClick={() => onInspectZone(zone.id)}
                         >
-                          {isSelected ? 'Viewing Details Below' : 'Inspect Zone Details'}
+                          {isSelected ? 'Jump to Zone Details' : 'Inspect Zone Details'}
                         </button>
                       </div>
                     </Popup>

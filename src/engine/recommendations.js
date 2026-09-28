@@ -13,17 +13,17 @@ export function generatePolicyRecommendations(baselineResult = {}, currentResult
   const baseSummary = baselineResult.citySummary || {};
   const currentSummary = currentResult.citySummary || {};
 
-  const baseOverall = baseSummary.overallPressure ?? 51.7;
-  const currOverall = currentSummary.overallPressure ?? 51.7;
+  const baseOverall = baseSummary.overallPressure ?? 0;
+  const currOverall = currentSummary.overallPressure ?? 0;
 
-  const baseTraffic = baseSummary.trafficPressure ?? 49.7;
-  const currTraffic = currentSummary.trafficPressure ?? 49.7;
+  const baseTraffic = baseSummary.trafficPressure ?? 0;
+  const currTraffic = currentSummary.trafficPressure ?? 0;
 
-  const baseLogistics = baseSummary.logisticsPressure ?? 53.6;
-  const currLogistics = currentSummary.logisticsPressure ?? 53.6;
+  const baseLogistics = baseSummary.logisticsPressure ?? 0;
+  const currLogistics = currentSummary.logisticsPressure ?? 0;
 
-  const baseWaste = baseSummary.wastePressure ?? 52.4;
-  const currWaste = currentSummary.wastePressure ?? 52.4;
+  const baseWaste = baseSummary.wastePressure ?? 0;
+  const currWaste = currentSummary.wastePressure ?? 0;
 
   const deltaOverall = currOverall - baseOverall;
   const deltaTraffic = currTraffic - baseTraffic;
@@ -68,11 +68,18 @@ export function generatePolicyRecommendations(baselineResult = {}, currentResult
 
   // 2. Traffic Subsystem Rules
   if (currTraffic >= 70.0 || deltaTraffic >= 15.0) {
+    const levelText = currTraffic >= 70.0
+      ? 'Traffic pressure has reached a critical level.'
+      : 'Traffic pressure has risen sharply relative to the baseline.';
+    // Advising more transit is meaningless when transit is already expanded
+    const actionText = publicTransitModifier >= 1.5
+      ? 'Transit service is already expanded; reduce private vehicle and freight volumes or restore corridor capacity.'
+      : 'Prioritize transit capacity and alternative travel modes.';
     recommendations.push({
       id: 'rec-traffic-critical',
       category: 'Traffic',
       severity: 'critical',
-      text: 'Traffic pressure is approaching a critical level. Prioritize transit capacity and alternative travel modes.'
+      text: `${levelText} ${actionText}`
     });
   } else if (deltaTraffic >= 2.0) {
     recommendations.push({
@@ -123,6 +130,19 @@ export function generatePolicyRecommendations(baselineResult = {}, currentResult
     });
   }
 
-  // Bound to maximum 5 items
-  return recommendations.slice(0, 5);
+  // Non-baseline scenario whose effects fall below every rule threshold
+  if (recommendations.length === 0) {
+    recommendations.push({
+      id: 'rec-marginal-change',
+      category: 'Overall',
+      severity: 'safe',
+      text: 'This scenario changes modeled pressure only marginally relative to the calibrated baseline.'
+    });
+  }
+
+  // Keep the most severe items when bounding to 5 (Array.prototype.sort is stable)
+  const severityRank = { critical: 0, moderate: 1, safe: 2 };
+  return recommendations
+    .sort((a, b) => severityRank[a.severity] - severityRank[b.severity])
+    .slice(0, 5);
 }
