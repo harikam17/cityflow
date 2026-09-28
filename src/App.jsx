@@ -51,6 +51,14 @@ export default function App() {
     setSelectedZoneId((prev) => (prev === zoneId ? null : zoneId));
   };
 
+  // Popup "inspect" action: always selects (never toggles off) and brings the inspector into view
+  const handleInspectZone = (zoneId) => {
+    setSelectedZoneId(zoneId);
+    requestAnimationFrame(() => {
+      document.getElementById('zone-inspector')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
   const handleCloseInspector = () => {
     setSelectedZoneId(null);
   };
@@ -82,12 +90,13 @@ export default function App() {
             zones={currentResult.zones}
             selectedZoneId={selectedZoneId}
             onSelectZone={handleSelectZone}
+            onInspectZone={handleInspectZone}
           />
         </div>
 
         {/* Selected Zone Inspector Panel (Contextual) */}
         {selectedZone && (
-          <div className="inspector-container">
+          <div id="zone-inspector" className="inspector-container">
             <ZoneDetailsModal
               zone={selectedZone}
               onClose={handleCloseInspector}
