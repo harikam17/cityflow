@@ -1,5 +1,6 @@
 import React from 'react';
-import { PRESET_SCENARIOS, AVAILABLE_CORRIDORS } from '../data/presetScenarios';
+import { PRESET_SCENARIOS } from '../data/presetScenarios';
+import { CORRIDORS } from '../data/cityData';
 
 export default function SimulatorControls({
   scenario = {},
@@ -181,15 +182,15 @@ export default function SimulatorControls({
           onChange={handleCorridorChange}
         >
           <option value="none">None (All Corridors Open)</option>
-          {AVAILABLE_CORRIDORS.map((corridor) => (
+          {CORRIDORS.map((corridor) => (
             <option key={corridor.id} value={corridor.id}>
-              {corridor.name} (–30% capacity)
+              {corridor.name} (closed)
             </option>
           ))}
         </select>
         {closedCorridorId && (
           <p className="field-hint text-critical">
-            Active closure reduces road capacity in connected sectors.
+            The closed corridor's arterial lanes are removed from capacity in every zone it crosses.
           </p>
         )}
       </div>

@@ -135,7 +135,7 @@ export default function ScenarioImpact({
       },
       tooltip: {
         callbacks: {
-          label: (context) => ` ${context.dataset.label}: ${context.parsed.y.toFixed(1)} / 100`
+          label: (context) => ` ${context.dataset.label}: ${context.parsed.y.toFixed(1)}%`
         }
       }
     },
@@ -151,18 +151,19 @@ export default function ScenarioImpact({
       },
       y: {
         min: 0,
-        max: 100,
+        // Utilisation can exceed 100%; round the axis up to the next 50
+        max: Math.max(100, Math.ceil(Math.max(...chartData.datasets.flatMap((d) => d.data)) / 50) * 50),
         grid: {
           color: '#1e293b'
         },
         ticks: {
           color: '#94a3b8',
           font: { size: 11 },
-          stepSize: 20
+          stepSize: 25
         },
         title: {
           display: true,
-          text: 'Pressure Score (0–100)',
+          text: 'Utilisation (%, 100 = at capacity)',
           color: '#64748b',
           font: { size: 11 }
         }
@@ -191,7 +192,7 @@ export default function ScenarioImpact({
                 <th scope="col">Metric</th>
                 <th scope="col" className="text-right">Baseline</th>
                 <th scope="col" className="text-right">Current</th>
-                <th scope="col" className="text-right">Change</th>
+                <th scope="col" className="text-right">Change (pts)</th>
               </tr>
             </thead>
             <tbody>

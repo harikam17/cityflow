@@ -8,7 +8,7 @@ export const PRESET_SCENARIOS = [
   {
     id: "preset-baseline",
     name: "Calibrated Baseline",
-    description: "Standard weekday operating conditions with regular traffic flows and baseline logistics schedules.",
+    description: "2025 weekday peak built from the Bengaluru dataset, calibrated to the CMP 2020 observed peak speed.",
     inputs: {
       privateVehicleModifier: 1.0,
       publicTransitModifier: 1.0,
@@ -30,18 +30,19 @@ export const PRESET_SCENARIOS = [
   {
     id: "preset-transit-disruption",
     name: "Transit Service Disruption",
-    description: "50% reduction in public transit frequency shifting commuters into private cars and ride-hails.",
+    description: "50% cut in bus service with commuters shifting to private vehicles, plus an Outer Ring Road closure.",
     inputs: {
-      privateVehicleModifier: 1.45,
+      // Displaced riders move to private vehicles inside the engine; no extra private uplift here
+      privateVehicleModifier: 1.0,
       publicTransitModifier: 0.5,
       deliveryFreightModifier: 1.1,
-      closedCorridorId: "corridor-east-central"
+      closedCorridorId: "corridor-orr"
     }
   },
   {
     id: "preset-green-corridor",
     name: "High-Capacity Transit Push",
-    description: "50% increase in bus/metro feeder capacity with 25% reduction in single-occupancy private cars.",
+    description: "50% more bus service plus demand management cutting private vehicle trips by 25%.",
     inputs: {
       privateVehicleModifier: 0.75,
       publicTransitModifier: 1.5,
@@ -49,9 +50,4 @@ export const PRESET_SCENARIOS = [
       closedCorridorId: null
     }
   }
-];
-
-export const AVAILABLE_CORRIDORS = [
-  { id: "corridor-east-central", name: "East-Central Arterial Flyover" },
-  { id: "corridor-tech-orr", name: "Mahadevapura Outer Ring Road Express Lane" }
 ];

@@ -7,16 +7,11 @@ import ZoneDetailsModal from './components/ZoneDetailsModal';
 import ScenarioImpact from './components/ScenarioImpact';
 import Recommendations from './components/Recommendations';
 import DataProvenance from './components/DataProvenance';
-import { BASELINE_ZONES, SIMULATED_CITY_METADATA } from './data/baselineCity';
-import { calculateCitySimulation } from './engine/simulationEngine';
+import { CITY_DATASET } from './data/cityData';
+import { calculateCitySimulation, SCENARIO_DEFAULTS } from './engine/simulationEngine';
 import { generatePolicyRecommendations } from './engine/recommendations';
 
-const BASELINE_SCENARIO = {
-  privateVehicleModifier: 1.0,
-  publicTransitModifier: 1.0,
-  deliveryFreightModifier: 1.0,
-  closedCorridorId: null
-};
+const BASELINE_SCENARIO = SCENARIO_DEFAULTS;
 
 export default function App() {
   const [scenario, setScenario] = useState(BASELINE_SCENARIO);
@@ -24,12 +19,12 @@ export default function App() {
 
   // 1. Separate baseline simulation calculation (Single source of truth)
   const baselineResult = useMemo(() => {
-    return calculateCitySimulation(BASELINE_ZONES, BASELINE_SCENARIO);
+    return calculateCitySimulation(CITY_DATASET, BASELINE_SCENARIO);
   }, []);
 
   // 2. Current scenario simulation calculation
   const currentResult = useMemo(() => {
-    return calculateCitySimulation(BASELINE_ZONES, scenario);
+    return calculateCitySimulation(CITY_DATASET, scenario);
   }, [scenario]);
 
   // 3. Deterministic recommendations derived from baseline vs scenario deltas
@@ -70,14 +65,17 @@ export default function App() {
       <main className="main-content">
         {/* Modelled Environment & Data Provenance Notice */}
         <div className="disclaimer-banner" role="region" aria-label="Simulation notice">
-          <span className="badge badge-info">BENGALURU MOBILITY BASELINE</span>
+          <span className="badge badge-info">BENGALURU {CITY_DATASET.meta.baseYear} BASELINE</span>
           <span className="disclaimer-text">
-            <strong>Source: bengaluru-mobility-indicators.csv</strong> — Passenger mobility indicators are based on the supplied dataset. Road, freight, waste and map geometry inputs remain modelled unless separately sourced ({SIMULATED_CITY_METADATA.cityName}).
+            <strong>{CITY_DATASET.meta.city}.</strong> Built from census, household-survey, OpenStreetMap, BBMP waste and Namma Metro ridership data, calibrated to the CMP 2020 observed peak speed. Pressure is shown as utilisation: 100% means demand equals capacity.
           </span>
         </div>
 
         {/* City-Wide KPI Summary */}
-        <KpiSummary citySummary={currentResult.citySummary} />
+        <KpiSummary
+          citySummary={currentResult.citySummary}
+          observedPeakSpeedKmph={CITY_DATASET.constants.observedPeakSpeedKmph.private}
+        />
 
         {/* Core Operational Grid: Map & Controls */}
         <div className="dashboard-grid">
