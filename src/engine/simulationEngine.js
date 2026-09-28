@@ -16,9 +16,26 @@ export const PRIVATE_MODES = ['twoWheeler', 'carVan', 'auto', 'taxi'];
 
 export const SCENARIO_DEFAULTS = {
   privateVehicleModifier: 1.0,
-  publicTransitModifier: 1.0,
+  busServiceModifier: 1.0,
+  metroServiceModifier: 1.0,
+  workFromHomeShare: 0,
   deliveryFreightModifier: 1.0,
+  offPeakDeliveryShare: 0,
+  offPeakWasteCollectionShare: 0,
+  addedProcessingTpd: 0,
   closedCorridorId: null
+};
+
+/** Allowed range of every numeric lever; the UI sliders and the URL parser both use it. */
+export const SCENARIO_LIMITS = {
+  privateVehicleModifier: [0.5, 1.5],
+  busServiceModifier: [0.5, 3.0],
+  metroServiceModifier: [0.5, 3.0],
+  workFromHomeShare: [0, 0.5],
+  deliveryFreightModifier: [0.5, 2.0],
+  offPeakDeliveryShare: [0, 0.6],
+  offPeakWasteCollectionShare: [0, 1],
+  addedProcessingTpd: [0, 5000]
 };
 
 function assumption(dataset, key) {
@@ -26,39 +43,61 @@ function assumption(dataset, key) {
 }
 
 export function sanitizeScenario(scenario = {}) {
-  const num = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
-  return {
-    privateVehicleModifier: num(scenario.privateVehicleModifier, 1.0),
-    publicTransitModifier: num(scenario.publicTransitModifier, 1.0),
-    deliveryFreightModifier: num(scenario.deliveryFreightModifier, 1.0),
-    closedCorridorId: scenario.closedCorridorId || null
-  };
+  const out = { ...SCENARIO_DEFAULTS };
+  for (const [key, [lo, hi]] of Object.entries(SCENARIO_LIMITS)) {
+    const v = scenario[key];
+    if (typeof v === 'number' && Number.isFinite(v)) out[key] = Math.min(hi, Math.max(lo, v));
+  }
+  out.closedCorridorId = scenario.closedCorridorId || null;
+  return out;
 }
 
 /**
- * Daily resident trips by private mode after the transit-service change and the
- * private-vehicle modifier. Riders gained or lost by transit move to or from the
- * private modes in proportion to their existing shares.
+ * Daily resident trips by mode after the transit-service changes and the private-vehicle modifier.
+ *
+ * The survey mode shares predate the metro (2008), so today's measured metro boardings are taken
+ * out of the bus and private modes in proportion to their survey shares. Riders gained or lost by
+ * a service change move to or from the private modes in proportion to their shares.
  */
 export function calculateZoneTrips(zone, dataset, scenario) {
   const { dailyTrips, modeShares } = zone.mobility;
-  const elasticity = assumption(dataset, 'transitServiceElasticity');
+  const busElasticity = assumption(dataset, 'transitServiceElasticity');
+  const metroElasticity = assumption(dataset, 'metroServiceElasticity');
 
-  const basePt = dailyTrips * modeShares.publicTransport;
-  const basePrivate = Object.fromEntries(PRIVATE_MODES.map((m) => [m, dailyTrips * modeShares[m]]));
-  const privateTotal = PRIVATE_MODES.reduce((s, m) => s + basePrivate[m], 0);
+  const surveyPt = dailyTrips * modeShares.publicTransport;
+  const surveyPrivate = Object.fromEntries(PRIVATE_MODES.map((m) => [m, dailyTrips * modeShares[m]]));
+  const surveyPrivateTotal = PRIVATE_MODES.reduce((s, m) => s + surveyPrivate[m], 0);
 
-  // Positive = riders gained by transit. Cannot lose more riders than exist or gain more than drive today.
-  const rawShift = basePt * elasticity * (scenario.publicTransitModifier - 1);
-  const ptShift = Math.max(-basePt, Math.min(privateTotal, rawShift));
+  // Baseline 2025: measured metro riders came from bus and private modes
+  const metroBase = Math.min(zone.transit.metroDailyBoardings, surveyPt + surveyPrivateTotal);
+  const fromBus = metroBase * (surveyPt / (surveyPt + surveyPrivateTotal));
+  const busBase = surveyPt - fromBus;
+  const privateBaseTotal = surveyPrivateTotal - (metroBase - fromBus);
+
+  // Service changes. Cannot lose more riders than exist or gain more than drive today.
+  const clampShift = (raw, base, available) => Math.max(-base, Math.min(available, raw));
+  const busShift = clampShift(busBase * busElasticity * (scenario.busServiceModifier - 1), busBase, privateBaseTotal);
+  const metroShift = clampShift(
+    metroBase * metroElasticity * (scenario.metroServiceModifier - 1),
+    metroBase,
+    privateBaseTotal - Math.max(0, busShift)
+  );
+  const privateAfter = Math.max(0, privateBaseTotal - busShift - metroShift);
 
   const privateTrips = {};
   for (const m of PRIVATE_MODES) {
-    const share = privateTotal > 0 ? basePrivate[m] / privateTotal : 0;
-    privateTrips[m] = Math.max(0, basePrivate[m] - ptShift * share) * scenario.privateVehicleModifier;
+    const share = surveyPrivateTotal > 0 ? surveyPrivate[m] / surveyPrivateTotal : 0;
+    privateTrips[m] = privateAfter * share * scenario.privateVehicleModifier;
   }
 
-  return { ptTrips: basePt + ptShift, ptShift, privateTrips };
+  return {
+    busTrips: busBase + busShift,
+    metroTrips: metroBase + metroShift,
+    busShift,
+    metroShift,
+    privateBaseTotal,
+    privateTrips
+  };
 }
 
 /** Peak-hour vehicles and PCU-km generated by a zone's residents. */
@@ -80,13 +119,12 @@ export function calculateResidentPeakLoad(zone, trips, dataset) {
 export function calculateEffectiveCapacity(zone, dataset, closedCorridorId) {
   const base = zone.roads.majorCapacityPcuKmPerHr;
   const corridor = closedCorridorId ? dataset.corridors.find((c) => c.id === closedCorridorId) : null;
-  const lost = corridor?.zones?.[zone.id] ?? 0;
-  return { capacity: Math.max(1, base - lost), lostCapacity: lost };
+  const lost = Math.min(base - 1, corridor?.zones?.[zone.id] ?? 0);
+  return { capacity: base - lost, lostCapacity: lost };
 }
 
 /** Travel-time index from the calibrated delay curve: 1 + alpha * (V/C)^beta. */
-export function travelTimeIndex(vc, dataset) {
-  const alpha = dataset.constants.calibration.bprAlpha;
+export function travelTimeIndex(vc, dataset, alpha = calibrateAlpha(dataset)) {
   const beta = assumption(dataset, 'bprBeta');
   return 1 + alpha * Math.pow(Math.max(0, vc), beta);
 }
@@ -106,40 +144,261 @@ export function calculateOverallPressure(traffic, logistics, waste, dataset) {
   return w.traffic * traffic + w.logistics * logistics + w.waste * waste;
 }
 
+// ---------------------------------------------------------------------------
+// Trip distribution and routing between zones
+// ---------------------------------------------------------------------------
+
+function distanceKm([lat1, lon1], [lat2, lon2]) {
+  const rad = Math.PI / 180;
+  const x = (lon2 - lon1) * rad * Math.cos(((lat1 + lat2) / 2) * rad);
+  const y = (lat2 - lat1) * rad;
+  return 6371 * Math.hypot(x, y);
+}
+
+const networkCache = new WeakMap();
+
+/**
+ * Zone graph: shortest centre-to-centre path between every pair of zones through shared
+ * boundaries, and the road-km each zone on the path carries. A trip loads its origin, its
+ * destination and every zone it passes through (half of each leg to each end of the leg).
+ */
+export function zoneNetwork(dataset) {
+  if (networkCache.has(dataset)) return networkCache.get(dataset);
+  const circuity = assumption(dataset, 'routeCircuity');
+  const zones = dataset.zones;
+  const index = Object.fromEntries(zones.map((z, i) => [z.id, i]));
+  const n = zones.length;
+  const leg = (a, b) => distanceKm(zones[a].center, zones[b].center) * circuity;
+
+  const paths = zones.map((_, src) => {
+    // Dijkstra over at most a dozen zones
+    const dist = Array(n).fill(Infinity);
+    const prev = Array(n).fill(-1);
+    const done = Array(n).fill(false);
+    dist[src] = 0;
+    for (let k = 0; k < n; k++) {
+      let u = -1;
+      for (let i = 0; i < n; i++) if (!done[i] && (u < 0 || dist[i] < dist[u])) u = i;
+      if (u < 0 || dist[u] === Infinity) break;
+      done[u] = true;
+      for (const id of zones[u].neighbours) {
+        const v = index[id];
+        if (v !== undefined && dist[u] + leg(u, v) < dist[v]) {
+          dist[v] = dist[u] + leg(u, v);
+          prev[v] = u;
+        }
+      }
+    }
+    return zones.map((_, dst) => {
+      // Intrazonal trips: mean distance between two random points in a disc of the zone's area
+      if (dst === src) return { km: 0.9 * Math.sqrt(zones[src].areaKm2 / Math.PI) * circuity, byZone: { [src]: 1 } };
+      const hops = [];
+      for (let v = dst; v !== -1; v = prev[v]) hops.unshift(v);
+      const byZone = {};
+      for (let h = 0; h + 1 < hops.length; h++) {
+        const l = leg(hops[h], hops[h + 1]);
+        byZone[hops[h]] = (byZone[hops[h]] ?? 0) + l / 2;
+        byZone[hops[h + 1]] = (byZone[hops[h + 1]] ?? 0) + l / 2;
+      }
+      const km = dist[dst];
+      for (const z of Object.keys(byZone)) byZone[z] /= km; // share of the trip's km in each zone
+      return { km, byZone, hops };
+    });
+  });
+
+  const result = { paths };
+  networkCache.set(dataset, result);
+  return result;
+}
+
+/** Singly-constrained gravity model: trips from i split over destinations by attraction x exp(-beta x km). */
+function distributeTrips(productions, attractions, paths, beta) {
+  return productions.map((p, i) => {
+    const w = attractions.map((a, j) => a * Math.exp(-beta * paths[i][j].km));
+    const total = w.reduce((s, x) => s + x, 0);
+    return w.map((x) => (total > 0 ? (p * x) / total : 0));
+  });
+}
+
+/** Destination weights: jobs (less work-from-home) for work trips, population for the rest. */
+function attractionWeights(dataset, wfh) {
+  const workShare = assumption(dataset, 'peakWorkTripShare');
+  const jobs = dataset.zones.map((z) => z.demographics.jobsBaseline * (1 - wfh * z.demographics.officeJobsShare));
+  const pop = dataset.zones.map((z) => z.demographics.populationBaseYear);
+  const jobsTotal = jobs.reduce((s, x) => s + x, 0);
+  const popTotal = pop.reduce((s, x) => s + x, 0);
+  return jobs.map((j, i) => workShare * (j / jobsTotal) + (1 - workShare) * (pop[i] / popTotal));
+}
+
+const betaCache = new WeakMap();
+
+/**
+ * Distance-decay parameter of the gravity model, solved so the mean modelled trip length equals
+ * the survey's average trip length (weighted by each zone's trips). Bisection; mean length falls
+ * monotonically as beta rises.
+ */
+export function calibrateGravityBeta(dataset) {
+  if (betaCache.has(dataset)) return betaCache.get(dataset);
+  const { paths } = zoneNetwork(dataset);
+  const { pcu, tripLengthKm } = dataset.constants;
+  // Target: PCU-weighted mean length of private motorised trips (CMP 2020 by mode; auto uses the zone survey mean)
+  let pcuTrips = 0, pcuTripKm = 0;
+  const trips = dataset.zones.map((zone) => {
+    const { peakVehicles } = calculateResidentPeakLoad(zone, calculateZoneTrips(zone, dataset, SCENARIO_DEFAULTS), dataset);
+    let zonePcuTrips = 0;
+    for (const m of PRIVATE_MODES) {
+      const p = peakVehicles[m] * pcu[m];
+      zonePcuTrips += p;
+      pcuTripKm += p * (tripLengthKm[m] ?? zone.mobility.averageTripLengthKm);
+    }
+    pcuTrips += zonePcuTrips;
+    return zonePcuTrips;
+  });
+  const target = pcuTripKm / pcuTrips;
+  const attractions = attractionWeights(dataset, 0);
+  const meanKm = (beta) => {
+    const T = distributeTrips(trips, attractions, paths, beta);
+    let t = 0, km = 0;
+    T.forEach((row, i) => row.forEach((x, j) => { t += x; km += x * paths[i][j].km; }));
+    return km / t;
+  };
+  let lo = 0, hi = 3;
+  for (let k = 0; k < 60; k++) {
+    const mid = (lo + hi) / 2;
+    if (meanKm(mid) > target) lo = mid; else hi = mid;
+  }
+  const beta = (lo + hi) / 2;
+  betaCache.set(dataset, beta);
+  return beta;
+}
+
+/**
+ * Peak-direction arterial demand per zone, before congestion. Shared by the simulation and the
+ * calibration so the two can never disagree.
+ */
+function computeZoneDemand(dataset, scenario) {
+  const majorShare = assumption(dataset, 'majorRoadVehicleKmShare');
+  const directional = assumption(dataset, 'peakDirectionShare') / 0.5;
+  const workShare = assumption(dataset, 'peakWorkTripShare');
+  const wfh = scenario.workFromHomeShare;
+  const { pcu } = dataset.constants;
+  const { paths } = zoneNetwork(dataset);
+  const beta = calibrateGravityBeta(dataset);
+
+  const pass1 = dataset.zones.map((zone) => {
+    const trips = calculateZoneTrips(zone, dataset, scenario);
+    return { zone, trips, resident: calculateResidentPeakLoad(zone, trips, dataset) };
+  });
+
+  // Peak PCU-trips leaving each zone. Work from home removes the office-commute share of them.
+  const cityJobs = dataset.zones.reduce((s, z) => s + z.demographics.jobsBaseline, 0);
+  const cityOfficeShare = dataset.zones.reduce((s, z) => s + z.demographics.officeJobsAdded, 0) / cityJobs;
+  const productions = pass1.map(({ resident }) =>
+    PRIVATE_MODES.reduce((s, m) => s + resident.peakVehicles[m] * pcu[m], 0) * (1 - wfh * workShare * cityOfficeShare)
+  );
+  const T = distributeTrips(productions, attractionWeights(dataset, wfh), paths, beta);
+
+  // Route every origin-destination flow and add its PCU-km to each zone it crosses
+  const privatePcuKmByZone = dataset.zones.map(() => 0);
+  const throughPcuKmByZone = dataset.zones.map(() => 0);
+  T.forEach((row, i) =>
+    row.forEach((flow, j) => {
+      const path = paths[i][j];
+      for (const [z, share] of Object.entries(path.byZone)) {
+        const pcuKm = flow * path.km * share;
+        privatePcuKmByZone[z] += pcuKm;
+        if (Number(z) !== i && Number(z) !== j) throughPcuKmByZone[z] += pcuKm;
+      }
+    })
+  );
+
+  return pass1.map(({ zone, trips, resident }, idx) => {
+    const privatePcuKm = privatePcuKmByZone[idx];
+    const busPcuKm = zone.transit.busPeakPcuKmPerHr * scenario.busServiceModifier;
+    const goodsPcuKm =
+      zone.freight.goodsPeakPcuKmPerHr * scenario.deliveryFreightModifier * (1 - scenario.offPeakDeliveryShare);
+    const totalPcuKm = privatePcuKm + busPcuKm + goodsPcuKm;
+    return {
+      zone, trips, resident, totalPcuKm,
+      throughPcuKm: throughPcuKmByZone[idx],
+      demand: totalPcuKm * majorShare * directional
+    };
+  });
+}
+
+const alphaCache = new WeakMap();
+
+/**
+ * The one fitted parameter. alpha is solved so the demand-weighted mean zone travel-time index at
+ * baseline equals free-flow speed / CMP 2020 observed peak speed. TTI is linear in alpha, so the
+ * solution is closed-form. Cached per dataset object; a modified dataset recalibrates itself.
+ */
+export function calibrateAlpha(dataset) {
+  if (alphaCache.has(dataset)) return alphaCache.get(dataset);
+  const beta = assumption(dataset, 'bprBeta');
+  const target = dataset.constants.calibration.targetTravelTimeIndex;
+  const rows = computeZoneDemand(dataset, SCENARIO_DEFAULTS);
+  const weight = rows.reduce((s, r) => s + r.totalPcuKm, 0);
+  const meanX =
+    rows.reduce((s, r) => s + r.totalPcuKm * Math.pow(r.demand / r.zone.roads.majorCapacityPcuKmPerHr, beta), 0) / weight;
+  const alpha = (target - 1) / meanX;
+  alphaCache.set(dataset, alpha);
+  return alpha;
+}
+
+/**
+ * Corridor closure: traffic that used the lost capacity has to go somewhere. A share
+ * (closureDiversionShare) reroutes through neighbouring zones, split by their arterial capacity;
+ * the rest squeezes onto parallel roads in the same zone.
+ */
+function applyClosureDiversion(rows, dataset) {
+  const diversion = assumption(dataset, 'closureDiversionShare');
+  const byId = Object.fromEntries(rows.map((r) => [r.zone.id, r]));
+  for (const r of rows) {
+    r.divertedIn = 0;
+    r.divertedOut = 0;
+  }
+  for (const r of rows) {
+    if (r.lostCapacity <= 0) continue;
+    const out = r.demand * (r.lostCapacity / r.zone.roads.majorCapacityPcuKmPerHr) * diversion;
+    const receivers = r.zone.neighbours.map((id) => byId[id]).filter(Boolean);
+    const receiverCapacity = receivers.reduce((s, n) => s + n.capacity, 0);
+    if (!receivers.length || receiverCapacity <= 0) continue;
+    r.divertedOut += out;
+    for (const n of receivers) n.divertedIn += out * (n.capacity / receiverCapacity);
+  }
+  for (const r of rows) r.demand = r.demand - r.divertedOut + r.divertedIn;
+}
+
 const round1 = (v) => Number(v.toFixed(1));
 
 /** Main entry point: full simulation for every zone plus a city summary. */
 export function calculateCitySimulation(dataset, rawScenario = {}) {
   const scenario = sanitizeScenario(rawScenario);
-  const split = assumption(dataset, 'tripEndSplit');
-  const majorShare = assumption(dataset, 'majorRoadVehicleKmShare');
-  const directional = assumption(dataset, 'peakDirectionShare') / 0.5;
+  const alpha = calibrateAlpha(dataset);
   const freeFlow = assumption(dataset, 'freeFlowSpeedKmph');
   const fleetUtilisation = assumption(dataset, 'freightFleetUtilisation');
+  const offPeakCycle = cycleTimeFactor(assumption(dataset, 'offPeakTravelTimeIndex'), dataset);
+  const cityPopulation = dataset.city.populationBaseYear;
 
-  // Pass 1: resident-generated load (needed city-wide for the attraction half of trip ends)
-  const pass1 = dataset.zones.map((zone) => {
-    const trips = calculateZoneTrips(zone, dataset, scenario);
-    return { zone, trips, resident: calculateResidentPeakLoad(zone, trips, dataset) };
-  });
-  const cityResidentPcuKm = pass1.reduce((s, p) => s + p.resident.pcuKm, 0);
+  const rows = computeZoneDemand(dataset, scenario);
+  for (const r of rows) Object.assign(r, calculateEffectiveCapacity(r.zone, dataset, scenario.closedCorridorId));
+  applyClosureDiversion(rows, dataset);
 
-  // Pass 2: zone demand, capacity and pressures
-  const zones = pass1.map(({ zone, trips, resident }) => {
-    const privatePcuKm = split * resident.pcuKm + (1 - split) * cityResidentPcuKm * zone.demographics.jobsShare;
-    const busPcuKm = zone.transit.busPeakPcuKmPerHr * scenario.publicTransitModifier;
-    const goodsPcuKm = zone.freight.goodsPeakPcuKmPerHr * scenario.deliveryFreightModifier;
-    const totalPcuKm = privatePcuKm + busPcuKm + goodsPcuKm;
-    const peakDirectionDemand = totalPcuKm * majorShare * directional;
-
-    const { capacity, lostCapacity } = calculateEffectiveCapacity(zone, dataset, scenario.closedCorridorId);
-    const vc = peakDirectionDemand / capacity;
-    const tti = travelTimeIndex(vc, dataset);
+  const zones = rows.map(({ zone, trips, resident, totalPcuKm, throughPcuKm, demand, capacity, lostCapacity, divertedIn, divertedOut }) => {
+    const vc = demand / capacity;
+    const tti = travelTimeIndex(vc, dataset, alpha);
     const cycle = cycleTimeFactor(tti, dataset);
+    const deliveryCycle = (1 - scenario.offPeakDeliveryShare) * cycle + scenario.offPeakDeliveryShare * offPeakCycle;
+    const collectionCycle =
+      (1 - scenario.offPeakWasteCollectionShare) * cycle + scenario.offPeakWasteCollectionShare * offPeakCycle;
+
+    const popShare = zone.demographics.populationBaseYear / cityPopulation;
+    const processing = zone.waste.processingCapacityTpd + scenario.addedProcessingTpd * popShare;
 
     const trafficPressure = vc * 100;
-    const logisticsPressure = fleetUtilisation * scenario.deliveryFreightModifier * cycle * 100;
-    const wastePressure = (zone.waste.generationTpd / zone.waste.processingCapacityTpd) * cycle * 100;
+    const logisticsPressure = fleetUtilisation * scenario.deliveryFreightModifier * deliveryCycle * 100;
+    const wastePressure = (zone.waste.generationTpd / processing) * collectionCycle * 100;
     const overallPressure = calculateOverallPressure(trafficPressure, logisticsPressure, wastePressure, dataset);
 
     return {
@@ -155,21 +414,28 @@ export function calculateCitySimulation(dataset, rawScenario = {}) {
       overallPressure: round1(overallPressure),
       // Traffic internals
       peakVehicles: Object.fromEntries(Object.entries(resident.peakVehicles).map(([k, v]) => [k, Math.round(v)])),
-      demandPcuKmPerHr: Math.round(peakDirectionDemand),
+      demandPcuKmPerHr: Math.round(demand),
       totalPcuKmPerHr: Math.round(totalPcuKm),
+      throughTrafficShare: Number((throughPcuKm / totalPcuKm).toFixed(3)),
       capacityPcuKmPerHr: Math.round(capacity),
       lostCapacityPcuKmPerHr: Math.round(lostCapacity),
+      divertedInPcuKmPerHr: Math.round(divertedIn),
+      divertedOutPcuKmPerHr: Math.round(divertedOut),
       volumeCapacityRatio: Number(vc.toFixed(2)),
       travelTimeIndex: Number(tti.toFixed(2)),
       peakSpeedKmph: round1(freeFlow / tti),
       // Transit
-      ptDailyTrips: Math.round(trips.ptTrips),
-      ptShiftTrips: Math.round(trips.ptShift),
+      busDailyTrips: Math.round(trips.busTrips),
+      metroDailyTrips: Math.round(trips.metroTrips),
+      ptDailyTrips: Math.round(trips.busTrips + trips.metroTrips),
+      ptShiftTrips: Math.round(trips.busShift + trips.metroShift),
       // Freight and waste
       freightDemandTpd: Math.round(zone.freight.freightDemandTpd * scenario.deliveryFreightModifier),
-      goodsPeakVehicles: Math.round(zone.freight.goodsPeakVehicles * scenario.deliveryFreightModifier),
+      goodsPeakVehicles: Math.round(
+        zone.freight.goodsPeakVehicles * scenario.deliveryFreightModifier * (1 - scenario.offPeakDeliveryShare)
+      ),
       wasteGenerationTpd: zone.waste.generationTpd,
-      wasteProcessingCapacityTpd: zone.waste.processingCapacityTpd,
+      wasteProcessingCapacityTpd: round1(processing),
       cycleTimeFactor: Number(cycle.toFixed(2)),
       isCorridorClosed: lostCapacity > 0
     };
@@ -189,7 +455,8 @@ export function calculateCitySummary(zones = [], dataset) {
   const traffic = sum((z) => z.trafficPressure * z.demandPcuKmPerHr) / sum((z) => z.demandPcuKmPerHr);
   const freight = sum((z) => z.freightDemandTpd);
   const logistics = freight > 0 ? sum((z) => z.logisticsPressure * z.freightDemandTpd) / freight : 0;
-  const waste = (sum((z) => z.wasteGenerationTpd * z.cycleTimeFactor) / sum((z) => z.wasteProcessingCapacityTpd)) * 100;
+  // Tonnage-weighted: sum of (generated x cycle stretch) over processing capacity
+  const waste = sum((z) => (z.wastePressure / 100) * z.wasteProcessingCapacityTpd) / sum((z) => z.wasteProcessingCapacityTpd) * 100;
   // Harmonic mean speed weighted by vehicle-km, i.e. total distance / total time
   const speed = sum((z) => z.totalPcuKmPerHr) / sum((z) => z.totalPcuKmPerHr / z.peakSpeedKmph);
 
@@ -198,6 +465,59 @@ export function calculateCitySummary(zones = [], dataset) {
     logisticsPressure: round1(logistics),
     wastePressure: round1(waste),
     overallPressure: round1(calculateOverallPressure(traffic, logistics, waste, dataset)),
-    peakSpeedKmph: round1(speed)
+    peakSpeedKmph: round1(speed),
+    busDailyTrips: sum((z) => z.busDailyTrips),
+    metroDailyTrips: sum((z) => z.metroDailyTrips)
   };
+}
+
+/**
+ * Assumptions varied in the sensitivity check, and how far. Each variant recalibrates alpha,
+ * exactly as the real model would if that assumption were changed.
+ */
+export const SENSITIVITY_ASSUMPTIONS = [
+  'peakHourFactor',
+  'majorRoadVehicleKmShare',
+  'bprBeta',
+  'transitServiceElasticity',
+  'metroServiceElasticity',
+  'freightFleetUtilisation',
+  'travelShareOfCycleTime',
+  'closureDiversionShare'
+];
+
+function withAssumption(dataset, key, factor) {
+  const assumptions = dataset.constants.assumptions;
+  return {
+    ...dataset,
+    constants: {
+      ...dataset.constants,
+      assumptions: { ...assumptions, [key]: { ...assumptions[key], value: assumptions[key].value * factor } }
+    }
+  };
+}
+
+const variantCache = new WeakMap();
+
+/**
+ * Range of the city summary when each key assumption is moved +/- `swing` (one at a time).
+ * Answers "how much does this number depend on what we assumed?"
+ */
+export function calculateSensitivity(dataset, scenario, swing = 0.2) {
+  if (!variantCache.has(dataset)) {
+    variantCache.set(
+      dataset,
+      SENSITIVITY_ASSUMPTIONS.flatMap((key) => [withAssumption(dataset, key, 1 - swing), withAssumption(dataset, key, 1 + swing)])
+    );
+  }
+  const metrics = ['trafficPressure', 'logisticsPressure', 'wastePressure', 'overallPressure', 'peakSpeedKmph'];
+  const range = Object.fromEntries(metrics.map((m) => [m, { min: Infinity, max: -Infinity }]));
+  for (const variant of variantCache.get(dataset)) {
+    const s = calculateCitySimulation(variant, scenario).citySummary;
+    for (const m of metrics) {
+      range[m].min = Math.min(range[m].min, s[m]);
+      range[m].max = Math.max(range[m].max, s[m]);
+    }
+  }
+  return range;
 }

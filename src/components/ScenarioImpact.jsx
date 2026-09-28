@@ -9,7 +9,7 @@ import {
   Legend
 } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
-import { PRESET_SCENARIOS } from '../data/presetScenarios';
+import { findPreset } from '../data/presetScenarios';
 import { formatPressureScore, formatDeltaValue } from '../utils/formatters';
 
 // Register Chart.js modules
@@ -23,16 +23,7 @@ ChartJS.register(
 );
 
 export function getActiveScenarioName(scenario = {}) {
-  const matchingPreset = PRESET_SCENARIOS.find((preset) => {
-    return (
-      Math.abs(preset.inputs.privateVehicleModifier - (scenario.privateVehicleModifier ?? 1.0)) < 0.001 &&
-      Math.abs(preset.inputs.publicTransitModifier - (scenario.publicTransitModifier ?? 1.0)) < 0.001 &&
-      Math.abs(preset.inputs.deliveryFreightModifier - (scenario.deliveryFreightModifier ?? 1.0)) < 0.001 &&
-      preset.inputs.closedCorridorId === (scenario.closedCorridorId || null)
-    );
-  });
-
-  return matchingPreset ? matchingPreset.name : 'Custom Scenario';
+  return findPreset(scenario)?.name ?? 'Custom Scenario';
 }
 
 export default function ScenarioImpact({

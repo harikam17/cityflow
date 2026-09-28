@@ -1,7 +1,17 @@
 import React from 'react';
 import { formatPressureScore, getPressureSeverity, getSeverityLabel } from '../utils/formatters';
 
-export default function KpiSummary({ citySummary = {}, observedPeakSpeedKmph }) {
+/** How far the number moves when each key assumption is changed by +/-20% (one at a time). */
+function RangeNote({ range, unit }) {
+  if (!range || range.max - range.min < 0.5) return null;
+  return (
+    <p className="kpi-range" title="Range when each key assumption is moved 20% up or down, one at a time, with the model recalibrated each time">
+      Assumption range {range.min.toFixed(0)}–{range.max.toFixed(0)}{unit}
+    </p>
+  );
+}
+
+export default function KpiSummary({ citySummary = {}, sensitivity, observedPeakSpeedKmph }) {
   const {
     overallPressure = 0,
     trafficPressure = 0,
@@ -13,28 +23,32 @@ export default function KpiSummary({ citySummary = {}, observedPeakSpeedKmph }) 
   const kpis = [
     {
       id: 'kpi-overall',
-      label: 'OVERALL PRESSURE',
+      metric: 'overallPressure',
+      label: 'COMPOSITE',
       value: formatPressureScore(overallPressure),
       score: overallPressure,
-      sublabel: 'Weighted traffic, logistics and waste utilisation'
+      sublabel: '40% traffic, 30% logistics, 30% waste'
     },
     {
       id: 'kpi-traffic',
-      label: 'TRAFFIC PRESSURE',
+      metric: 'trafficPressure',
+      label: 'TRAFFIC',
       value: formatPressureScore(trafficPressure),
       score: trafficPressure,
       sublabel: 'Peak demand / arterial road capacity'
     },
     {
       id: 'kpi-logistics',
-      label: 'LOGISTICS PRESSURE',
+      metric: 'logisticsPressure',
+      label: 'FREIGHT FLEETS',
       value: formatPressureScore(logisticsPressure),
       score: logisticsPressure,
       sublabel: 'Freight fleet utilisation under congestion'
     },
     {
       id: 'kpi-waste',
-      label: 'WASTE PRESSURE',
+      metric: 'wastePressure',
+      label: 'WASTE PROCESSING',
       value: formatPressureScore(wastePressure),
       score: wastePressure,
       sublabel: 'Waste generated / processing capacity'
@@ -59,6 +73,7 @@ export default function KpiSummary({ citySummary = {}, observedPeakSpeedKmph }) 
                 <span className="kpi-value tabular-nums">{kpi.value}</span>
               </div>
               <p className="kpi-sublabel">{kpi.sublabel}</p>
+              {sensitivity && <RangeNote range={sensitivity[kpi.metric]} unit="%" />}
             </div>
           );
         })}
@@ -73,6 +88,7 @@ export default function KpiSummary({ citySummary = {}, observedPeakSpeedKmph }) 
           <p className="kpi-sublabel">
             City-wide peak-hour average (CMP 2020 observed: {observedPeakSpeedKmph} km/h)
           </p>
+          {sensitivity && <RangeNote range={sensitivity.peakSpeedKmph} unit=" km/h" />}
         </div>
       </div>
     </section>

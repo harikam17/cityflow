@@ -34,7 +34,7 @@ const MODE_LABELS = {
   slowMoving: 'Slow-moving vehicles'
 };
 
-export default function ZoneDetailsModal({ zone, onClose }) {
+export default function ZoneInspector({ zone, onClose }) {
   if (!zone) return null;
 
   const src = zone.source;
@@ -67,7 +67,7 @@ export default function ZoneDetailsModal({ zone, onClose }) {
           <div>
             <h3 className="zone-section-title">People and travel</h3>
             <span className="zone-section-subtitle">
-              Census population and household-survey travel behaviour, rescaled onto the 2022 zone boundary.
+              2011 census population summed over the zone's wards; household-survey travel behaviour; Grade-A office jobs added since 2011.
             </span>
           </div>
         </div>
@@ -81,7 +81,9 @@ export default function ZoneDetailsModal({ zone, onClose }) {
               <Row label="Population, 2011 census" value={formatNumber(demo.population2011)} prov="measured" />
               <Row label="Growth 2001–2011" value={`${(demo.populationGrowthRate * 100).toFixed(1)}% / yr`} prov="derived" />
               <Row label="Population, 2025 projection" value={formatNumber(demo.populationBaseYear)} prov="derived" />
-              <Row label="Jobs (2011 employment density)" value={formatNumber(demo.jobsBaseline)} prov="derived" />
+              <Row label="Jobs, 2011 (employment density)" value={formatNumber(demo.jobs2011)} prov="derived" />
+              <Row label="Office jobs added since 2011" value={formatNumber(demo.officeJobsAdded)} prov="estimated" />
+              <Row label="Jobs, 2025" value={formatNumber(demo.jobsBaseline)} prov="estimated" />
               <Row label="Zone area (2022 boundary)" value={`${src.areaKm2} km²`} prov="measured" />
               <Row label="Trips per person per day" value={mobility.perCapitaTripRate} prov="measured" />
               <Row label="Average trip length" value={`${mobility.averageTripLengthKm} km`} prov="measured" />
@@ -144,9 +146,16 @@ export default function ZoneDetailsModal({ zone, onClose }) {
               <Row label="Peak autos (residents)" value={formatNumber(zone.peakVehicles.auto)} prov="estimated" />
               <Row label="Arterial road length" value={`${formatNumber(roads.majorRoadKm)} km`} prov="measured" />
               <Row label="Peak-direction demand" value={`${formatNumber(zone.demandPcuKmPerHr)} PCU-km/h`} prov="estimated" />
+              <Row label="Through traffic (neither starts nor ends here)" value={`${(zone.throughTrafficShare * 100).toFixed(1)}%`} prov="estimated" />
               <Row label="Arterial capacity" value={`${formatNumber(zone.capacityPcuKmPerHr)} PCU-km/h`} prov="derived" />
               {zone.lostCapacityPcuKmPerHr > 0 && (
                 <Row label="Capacity lost to closure" value={`${formatNumber(zone.lostCapacityPcuKmPerHr)} PCU-km/h`} prov="derived" />
+              )}
+              {zone.divertedOutPcuKmPerHr > 0 && (
+                <Row label="Traffic diverted to neighbours" value={`${formatNumber(zone.divertedOutPcuKmPerHr)} PCU-km/h`} prov="estimated" />
+              )}
+              {zone.divertedInPcuKmPerHr > 0 && (
+                <Row label="Diverted traffic received" value={`${formatNumber(zone.divertedInPcuKmPerHr)} PCU-km/h`} prov="estimated" />
               )}
               <Row label="Volume / capacity" value={zone.volumeCapacityRatio.toFixed(2)} prov="estimated" />
               <Row label="Peak speed" value={`${zone.peakSpeedKmph} km/h`} prov="estimated" highlight />
@@ -161,7 +170,8 @@ export default function ZoneDetailsModal({ zone, onClose }) {
               </span>
             </div>
             <div className="subsystem-data-list">
-              <Row label="Public transport trips / day" value={formatNumber(zone.ptDailyTrips)} prov="derived" />
+              <Row label="Bus trips / day" value={formatNumber(zone.busDailyTrips)} prov="derived" />
+              <Row label="Metro trips / day" value={formatNumber(zone.metroDailyTrips)} prov="derived" />
               {zone.ptShiftTrips !== 0 && (
                 <Row
                   label={zone.ptShiftTrips > 0 ? 'Trips won from private modes' : 'Trips lost to private modes'}

@@ -1,8 +1,9 @@
 # CityFlow Architecture
 
 CityFlow is a what-if simulator for peak-hour urban pressure in Bengaluru. You change private-vehicle
-use, bus service, freight volume or close a major road, and it shows how traffic, freight logistics
-and solid-waste handling respond in each of the 8 BBMP zones.
+use, work from home, bus and metro service, freight volume and timing, waste processing, or close a
+major road, and it shows how traffic, freight logistics and solid-waste handling respond in each of
+the 8 BBMP zones, and what it would take to fix what breaks.
 
 It is a static single-page app: there is no server and no live feed. A Python pipeline turns public
 datasets into one JSON file, and a pure JavaScript engine runs the model in the browser.
@@ -16,6 +17,8 @@ flowchart LR
     WASTE[BBMP waste collection 2020<br/>+ processing plants]
     METRO[BMRCL station ridership 2025<br/>+ Wikidata station coords]
     CMP[CMP 2020 / CTTP / IRC:106<br/>published constants]
+    WARDS[BBMP ward census 2011]
+    OFFICE[ICRA office stock 2024<br/>+ office clusters]
   end
 
   subgraph Pipeline["scripts/dataset (Python, run offline)"]
@@ -28,6 +31,8 @@ flowchart LR
   ER --> RBZ[data/derived/roads-by-zone.json]
   RBZ --> BD
   CSV --> BD
+  WARDS --> BD
+  OFFICE --> BD
   KML --> BD
   WASTE --> BD
   METRO --> BD
@@ -64,7 +69,8 @@ so `extract_roads.py` only needs to run again after `fetch:data`.
 
 ```
 data/
-  bengaluru-mobility-indicators.csv   zone population, jobs, trip rate, trip length, mode share
+  bengaluru-mobility-indicators.csv   zone growth, jobs, trip rate, trip length, mode share
+  office-clusters.csv                 Grade-A office clusters (stock split, location)
   raw/                                downloaded sources (OSM tiles gitignored)
   derived/roads-by-zone.json          lane-km and capacity per zone and per corridor
 scripts/
@@ -75,7 +81,8 @@ src/
   data/cityData.js                    single import point for the dataset
   data/presetScenarios.js             preset what-if scenarios
   engine/simulationEngine.js          the model (pure functions, no React)
-  engine/recommendations.js           rule-based advice from baseline-vs-scenario deltas
+  engine/recommendations.js           solver-based advice: smallest lever change that fixes each problem
+  utils/scenarioUrl.js                scenario <-> shareable URL
   components/                         UI panels
   utils/formatters.js                 number formatting and severity thresholds
 ```
@@ -88,7 +95,12 @@ Every figure in the zone inspector carries a tag: **Measured** means taken direc
 | Input | Source | Year | Status |
 |---|---|---|---|
 | Zone boundaries (8 zones) | [BBMP Zone Boundaries, OpenCity](https://data.opencity.in/dataset/bbmp-ward-information) | 2022 | Measured |
-| Population, jobs, trip rate, trip length, mode share | `data/bengaluru-mobility-indicators.csv` | 2011 census, 2008-era survey | Measured |
+| Zone population | [BBMP ward-wise data, OpenCity](https://data.opencity.in/dataset/e40ab411-c575-4c90-8bde-31bcb8df575f): 198 wards summed by zone | 2011 census | Measured (total 84,43,675) |
+| Population growth, jobs, trip rate, mode share | `data/bengaluru-mobility-indicators.csv` | 2001–2011 census, 2008-era survey | Measured |
+| Grade-A office stock (263 msf), occupancy (88.6%), 86% in NE + SE | [ICRA, Office – Bengaluru](https://www.icra.in/Rating/DownloadResearchSummaryReport/6188) | Dec 2024 | Measured |
+| Office stock growth (7.5% a year, 2013–2024) | Industry office-market reports | 2024 | Measured |
+| Office stock by cluster | `data/office-clusters.csv` | 2024 | Estimated within ICRA's regional totals |
+| Motorised trip length (2W 9.8, car 10.2, taxi 13.1 km) | CMP 2020, via [ADB/ATO State of Play](https://asiantransportobservatory.org/documents/337/Bangalore_urban_state_of_play.pdf) | 2020 | Measured, used for calibration |
 | Road length, class and lanes | OpenStreetMap via Overpass | 2026 | Measured (lanes tagged on 62–99% of arterial km; class defaults elsewhere) |
 | Per-lane road capacity | IRC:106-1990 capacity guidelines | 1990 | Published standard |
 | Vehicle occupancy (car 2.3, 2W 1.5, auto 1.8, bus 37.5) | CMP 2020 household survey | 2020 | Measured |
@@ -110,17 +122,19 @@ Mysore Road, Old Madras Road, Old Airport Road, Bannerghatta Road) in each zone 
 
 `build_dataset.py` then, per zone:
 
-1. **Rescales the CSV onto the 2022 boundaries.** The CSV describes older, differently drawn zones
-   (for example, Dasarahalli is 61 km² in the CSV and 29 km² in 2022). Population and jobs are taken as
-   density × 2022 area, so demand and road capacity cover the same land.
-2. **Projects population to 2025** using each zone's own 2001–2011 growth rate.
+1. **Takes 2011 population from the census wards** of that zone, so population and road capacity cover
+   exactly the same land, and **projects it to 2025** with the zone's own 2001–2011 growth rate.
+2. **Builds 2025 jobs** as 2011 employment density × zone area, plus Grade-A office seats added since 2011.
+   Seats = cluster stock × 88.6% occupancy ÷ 110 sq ft; the share added since 2011 (64%) comes from the
+   7.5% a year stock growth. Clusters outside BBMP (Electronic City) go to the nearest zone.
 3. **Computes daily trips** = population × trip rate, split by mode share. Survey shares sum to
    101–103%, so they are normalised.
 4. **Allocates city-level streams**: bus-km (fleet × observed bus speed) by public-transport trips,
    goods vehicles (screenline share) by jobs, freight tonnage (inbound goods vehicles × payload × load
    factor) by jobs and population, and waste processing capacity by population.
 5. **Scales waste** from May 2020 collections to 2025 by population growth.
-6. **Calibrates** the one free parameter (below) and writes the JSON with a full source and assumption list.
+6. **Records zone adjacency** (zones sharing a boundary) for routing and closure diversions, and writes
+   the JSON with a full source and assumption list.
 
 ## The model
 
@@ -128,55 +142,86 @@ The engine is `src/engine/simulationEngine.js`: pure functions of `(dataset, sce
 Every pressure index is a **utilisation percentage: 100% means demand equals capacity.**
 Severity bands: under 80% is within capacity, 80–100% near capacity, over 100% over capacity.
 
-### Traffic
+### Trips by mode
 
-For each zone, peak-hour road demand in PCU-km/h:
+The survey mode shares date from 2008, before the metro. Measured 2025 metro boardings are therefore
+taken out of the bus and private modes in proportion to their survey shares. A change in bus or metro
+service moves riders by elasticity 0.5 × service change, to or from the private modes.
+
+### Where trips go (gravity model) and which roads they use
 
 ```
-resident load  = Σ_modes  trips_m × peakHourFactor / occupancy_m × PCU_m × tripLength
-private load   = ½ × resident load  +  ½ × cityResidentLoad × zoneJobsShare     (trip productions + attractions)
-total load     = private load + bus PCU-km × transitModifier + goods PCU-km × freightModifier
-peak demand    = total load × majorRoadShare × (peakDirectionShare / 0.5)
-V/C            = peak demand / (arterial capacity − closed-corridor capacity)
-travel time    = 1 + α × (V/C)^β              (BPR-form delay curve)
+productions_i  = Σ_modes  peak vehicles_m × PCU_m                      (per origin zone)
+attraction_j   = 0.6 × jobs share_j × (1 − WFH × office share_j) + 0.4 × population share_j
+trips_ij       = productions_i × attraction_j × exp(−β × km_ij) / Σ_k attraction_k × exp(−β × km_ik)
+```
+
+Distances `km_ij` are shortest paths between zone centres through shared boundaries, × 1.3 circuity.
+Each trip's km are split over every zone on its path: origin, destination **and the zones it passes through**.
+Intrazonal trips use the mean distance within a disc of the zone's area.
+
+### Traffic
+
+```
+peak demand_z  = (routed private PCU-km_z + bus PCU-km_z + goods PCU-km_z × (1 − night deliveries))
+                 × majorRoadShare × (peakDirectionShare / 0.5)
+closure        : capacity_z −= corridor capacity in z; 30% of the displaced demand moves to neighbouring
+                 zones in proportion to their capacity, the rest stays on parallel roads in z
+V/C            = peak demand / arterial capacity
+travel time    = 1 + α × (V/C)^β_BPR
 peak speed     = freeFlowSpeed / travel time
 traffic %      = V/C × 100
 ```
 
 ### Calibration
 
-Only **α** is fitted. It is solved so the vehicle-km-weighted city travel-time index equals
-40 / 11 = 3.64, where 11 km/h is the CMP 2020 observed average peak speed on major corridors.
-Result: α = 2.147, and the baseline city peak speed reproduces 11.0 km/h (checked by `npm run validate`).
+Two parameters are fitted, both by the engine itself (so model and calibration cannot drift apart):
+
+- **β (gravity distance decay)** is solved so the mean modelled private trip length equals the CMP 2020
+  motorised trip lengths by mode (PCU-weighted, about 10 km). Result: 0.233 per km.
+- **α (delay curve)** is solved so the vehicle-km-weighted city travel-time index equals 40 / 11 = 3.64,
+  where 11 km/h is the CMP 2020 observed average peak speed. Result: 1.84, and the baseline reproduces 11.0 km/h.
 
 ### Scenario levers
 
 | Lever | Effect in the model |
 |---|---|
-| Private vehicle usage | Scales private motorised trips |
-| Public transit service | Ridership changes by elasticity 0.5 × service change. Riders gained come from, and riders lost go to, private modes in proportion to their shares. Bus-km on the road scale with service. |
+| Private vehicle trips | Scales private motorised trips (demand management, pricing) |
+| Office staff working from home | Removes that share of office commutes at both trip ends |
+| Bus service | Ridership by elasticity 0.5; bus-km on the road scale with service |
+| Metro service | Ridership by elasticity 0.5, riders drawn from private modes; no road space used |
 | Delivery / freight volume | Scales goods vehicles, freight tonnage and fleet workload |
-| Corridor closure | Removes that corridor's arterial capacity in each zone it crosses; demand does not disappear |
+| Deliveries at night | Removes that share of goods vehicles from the peak; those runs see off-peak travel times |
+| New processing capacity | Adds TPD, allocated to zones by population |
+| Collection at night | That share of collection rounds see off-peak travel times |
+| Corridor closure | Removes the corridor's capacity in each crossed zone and diverts part of its traffic to neighbours |
 
 ### Logistics and waste
 
 Both fleets are slowed by congestion. Only the driving half of a cycle stretches:
 
 ```
-cycle factor  = 0.5 + 0.5 × (zone travel time / city baseline travel time)
-logistics %   = 75% × freightModifier × cycle factor × 100
-waste %       = waste generated / processing capacity share × cycle factor × 100
+cycle factor  = 0.5 + 0.5 × (travel time / city baseline travel time)
+logistics %   = 75% × freightModifier × blended cycle factor (peak / night) × 100
+waste %       = waste generated / processing capacity × blended cycle factor (peak / night) × 100
 overall %     = 0.4 × traffic + 0.3 × logistics + 0.3 × waste
 ```
 
 City-wide figures are weighted by where the load is: traffic by vehicle-km, logistics by freight
 tonnage, waste by tonnage. A gridlocked core is not averaged away by empty outskirts.
 
+### Sensitivity
+
+`calculateSensitivity` moves each of eight key assumptions 20% up and down, one at a time, recalibrates,
+and reports the range of every city figure. The app shows it under each KPI as "Assumption range".
+
 ### Recommendations
 
-`recommendations.js` compares a scenario with the baseline and fires fixed rules (e.g. overall up by
-3 points or more, traffic over 100%, a corridor closed). Results are sorted by severity and capped at 5,
-so critical advice is never dropped.
+`recommendations.js` does not use fixed advice text. For each problem (worst traffic zone, city traffic,
+waste, freight) it re-runs the simulation and bisects each lever to find the smallest change that
+fixes the problem on its own, then states it in operational units: extra buses, TPD of processing,
+share of deliveries at night. For a closure it names the zones that absorb the diverted traffic.
+`npm run validate` checks that a recommended fix really works when applied.
 
 ## Assumptions
 
@@ -190,49 +235,51 @@ These are the numbers not taken from data. All of them are in `ASSUMPTIONS` in
 | Vehicle-km on arterial network | 70% | Collectors and local streets carry trip access legs |
 | Free-flow speed | 40 km/h | Urban arterial design speed reduced for signal density |
 | Delay-curve exponent β | 2 | Signal-controlled networks; the highway BPR value of 4 over-penalises |
-| Trip-end split | 50 / 50 | Trips load both home and work ends |
-| Transit service elasticity | 0.5 | TCRP Report 95 |
+| Work share of peak trips | 60% | The rest (school, errands) go where people live |
+| Route circuity | 1.3 | Road distance / straight line, typical urban 1.2–1.4 |
+| Bus and metro service elasticity | 0.5 | TCRP Report 95 |
+| Sq ft per office seat | 110 | Indian Grade-A benchmark 100–125 |
+| Office stock split within regions | `data/office-clusters.csv` | Region totals fixed by ICRA |
+| Closure diversion to neighbours | 30% | The rest reroutes within the zone |
+| Off-peak travel-time index | 1.3 | Night runs near free flow |
 | Payloads | LCV 2 t, truck 9 t, MAV 20 t | Typical rated payloads |
 | Load factor | 0.6 | Includes empty backhauls |
 | Freight fleet utilisation at baseline | 75% | No public fleet-capacity data |
 | Driving share of a fleet cycle | 50% | Loading, unloading and handling take the rest |
 | Local-street lane capacity | 300 PCU/h | Not covered by IRC:106 |
-| Composite weights | 0.4 / 0.3 / 0.3 | Policy choice |
+| Composite weights | 0.4 / 0.3 / 0.3 | Policy choice; the three indices are also shown separately |
 
 ## Baseline results (2025)
 
-| Zone | Population | Arterial km | Traffic | Peak speed | Logistics | Waste | Metro boardings/day |
-|---|---|---|---|---|---|---|---|
-| West | 17,65,110 | 178 | 173% | 5.4 km/h | 114% | 258% | 1,70,977 |
-| East | 20,86,640 | 242 | 87% | 15.3 km/h | 65% | 145% | 1,23,188 |
-| South | 22,31,897 | 257 | 98% | 13.0 km/h | 69% | 132% | 1,13,468 |
-| Yelahanka | 7,13,039 | 174 | 33% | 32.5 km/h | 50% | 112% | 0 |
-| Mahadevapura | 12,46,242 | 231 | 53% | 25.0 km/h | 54% | 85% | 1,27,610 |
-| Bommanahalli | 6,11,738 | 181 | 27% | 34.7 km/h | 49% | 135% | 39,966 |
-| Rajarajeshwari Nagar | 8,11,382 | 246 | 16% | 37.9 km/h | 48% | 90% | 64,649 |
-| Dasarahalli | 2,35,491 | 42 | 27% | 34.7 km/h | 49% | 149% | 22,112 |
-| **City** | **97,01,539** | | **98%** | **11.0 km/h** | **72%** | **147%** | **7,04,956** |
+| Zone | Population 2025 | Jobs 2025 | Arterial km | Traffic | Peak speed | Freight fleets | Waste | Metro trips/day |
+|---|---|---|---|---|---|---|---|---|
+| West | 16,02,398 | 7,83,171 | 178 | 167% | 6.5 km/h | 101% | 338% | 1,70,977 |
+| East | 22,82,772 | 9,56,064 | 242 | 139% | 8.8 km/h | 85% | 235% | 1,23,188 |
+| South | 24,86,811 | 5,71,915 | 257 | 127% | 10.1 km/h | 78% | 181% | 1,13,468 |
+| Yelahanka | 10,22,326 | 2,84,290 | 174 | 73% | 20.1 km/h | 58% | 122% | 0 |
+| Mahadevapura | 15,80,347 | 8,41,041 | 231 | 77% | 19.1 km/h | 59% | 99% | 1,27,610 |
+| Bommanahalli | 16,95,569 | 4,05,026 | 181 | 75% | 19.7 km/h | 58% | 78% | 39,966 |
+| Rajarajeshwari Nagar | 16,20,205 | 1,33,706 | 246 | 39% | 31.2 km/h | 51% | 64% | 64,649 |
+| Dasarahalli | 7,97,655 | 16,571 | 42 | 100% | 14 km/h | 67% | 81% | 22,112 |
+| **City** | **1,30,88,083** | | | **113%** | **11 km/h** | **74%** | **161%** | **6,61,970** |
 
 The waste figure is not a modelling artefact. May 2020 collections were 3,766 t/day against 2,750 t/day
 of operational processing capacity; the gap goes to landfill.
 
 ## Known limitations
 
-- **Outer IT corridors are under-loaded.** Jobs come from 2011 employment density, before most of the
-  growth along Whitefield, ORR and Electronic City. Mahadevapura and Bommanahalli therefore show
-  25–35 km/h peak speeds, faster than people there experience. A current employment dataset per zone
-  is the single most valuable addition.
-- **Zone averages hide hotspots.** The model works per zone, so a jammed Silk Board junction is averaged
-  with quiet roads nearby. Link-level assignment would need an origin-destination matrix.
+- **Zone averages hide hotspots.** Eight zones are coarse: a jammed Silk Board junction is averaged with
+  quieter roads nearby, so Mahadevapura and Bommanahalli read "near capacity" rather than gridlocked.
+  Ward-level zones and link-level assignment on the OSM network are the next step.
 - **Population is projected, not counted.** No census has been held since 2011; zone growth rates from
   2001–2011 are extended to 2025.
-- **Only zone residents' trips are counted**, plus goods and buses. Through traffic and commuters from
-  outside BBMP are not modelled.
+- **Office stock by cluster is estimated** within ICRA's published regional totals; a per-micro-market
+  stock table would replace it directly.
+- **Commuters from outside BBMP are not modelled**, except that Electronic City's jobs load Bommanahalli.
 - **Freight and fleet capacities are estimated** from city-boundary counts and assumptions; there is no
   public per-zone freight data.
-- **Metro ridership is display-only.** The survey public-transport share predates most of the metro
-  network, and folding metro boardings into it would double count.
 - **Waste data are from May 2020**, during the COVID-19 lockdown period, when commercial waste was likely lower.
+- **No live feed.** The model is a planning tool calibrated to survey data, not a real-time monitor.
 
 ## Extending
 
@@ -240,6 +287,5 @@ of operational processing capacity; the gap goes to landfill.
   it a `meta.sources` entry, run `npm run build:data`, then `npm run validate`.
 - **New assumption:** add it to `ASSUMPTIONS` with a `basis`; it appears in the app automatically.
 - **New corridor:** add a name pattern to `CORRIDORS` in `extract_roads.py` and rerun both build steps.
-- **New lever:** add a field to `SCENARIO_DEFAULTS` and `sanitizeScenario`, apply it in
-  `calculateCitySimulation`, add a control in `SimulatorControls.jsx`, and add a direction check to
-  `scripts/validateEngine.js`.
+- **New lever:** add it to `SCENARIO_DEFAULTS` and `SCENARIO_LIMITS`, apply it in the engine, add it to
+  `LEVER_GROUPS` in `SimulatorControls.jsx`, and add a direction check to `scripts/validateEngine.js`.

@@ -1,67 +1,85 @@
 import React from 'react';
-import { PRESET_SCENARIOS } from '../data/presetScenarios';
+import { PRESET_SCENARIOS, findPreset } from '../data/presetScenarios';
 import { CORRIDORS } from '../data/cityData';
+import { SCENARIO_LIMITS } from '../engine/simulationEngine';
 
-export default function SimulatorControls({
-  scenario = {},
-  onChangeScenario,
-  onResetScenario
-}) {
-  const {
-    privateVehicleModifier = 1.0,
-    publicTransitModifier = 1.0,
-    deliveryFreightModifier = 1.0,
-    closedCorridorId = null
-  } = scenario;
+const percent = (v) => `${Math.round(v * 100)}%`;
+const tpd = (v) => `+${Math.round(v).toLocaleString('en-IN')} TPD`;
 
-  // Identify active preset if scenario matches exactly
-  const activePreset = PRESET_SCENARIOS.find((preset) => {
-    return (
-      Math.abs(preset.inputs.privateVehicleModifier - privateVehicleModifier) < 0.001 &&
-      Math.abs(preset.inputs.publicTransitModifier - publicTransitModifier) < 0.001 &&
-      Math.abs(preset.inputs.deliveryFreightModifier - deliveryFreightModifier) < 0.001 &&
-      preset.inputs.closedCorridorId === closedCorridorId
-    );
-  });
+// Levers grouped by the system they act on. Ranges come from SCENARIO_LIMITS in the engine.
+const LEVER_GROUPS = [
+  {
+    title: 'Travel demand',
+    levers: [
+      { key: 'privateVehicleModifier', label: 'Private vehicle trips', step: 0.05, format: percent, hints: ['50%', 'Today', '150%'] },
+      { key: 'workFromHomeShare', label: 'Office staff working from home', step: 0.05, format: percent, hints: ['None', '', '50%'] }
+    ]
+  },
+  {
+    title: 'Public transport',
+    levers: [
+      { key: 'busServiceModifier', label: 'Bus service (BMTC)', step: 0.05, format: percent, hints: ['Half', '', '3×'] },
+      { key: 'metroServiceModifier', label: 'Metro service (Namma Metro)', step: 0.05, format: percent, hints: ['Half', '', '3×'] }
+    ]
+  },
+  {
+    title: 'Freight',
+    levers: [
+      { key: 'deliveryFreightModifier', label: 'Delivery / freight volume', step: 0.05, format: percent, hints: ['50%', '', '200%'] },
+      { key: 'offPeakDeliveryShare', label: 'Deliveries moved to night hours', step: 0.05, format: percent, hints: ['None', '', '60%'] }
+    ]
+  },
+  {
+    title: 'Solid waste',
+    levers: [
+      { key: 'addedProcessingTpd', label: 'New processing capacity', step: 100, format: tpd, hints: ['None', '', '5,000 TPD'] },
+      { key: 'offPeakWasteCollectionShare', label: 'Collection rounds run at night', step: 0.05, format: percent, hints: ['None', '', 'All'] }
+    ]
+  }
+];
 
-  const handleSliderChange = (field, value) => {
-    onChangeScenario({
-      ...scenario,
-      [field]: parseFloat(value)
-    });
-  };
+function Lever({ lever, value, onChange }) {
+  const [min, max] = SCENARIO_LIMITS[lever.key];
+  const id = `lever-${lever.key}`;
+  return (
+    <div className="form-group">
+      <div className="form-label-row">
+        <label htmlFor={id}>{lever.label}</label>
+        <span className="control-value tabular-nums">{lever.format(value)}</span>
+      </div>
+      <input
+        id={id}
+        type="range"
+        className="range-slider"
+        min={min}
+        max={max}
+        step={lever.step}
+        value={value}
+        onChange={(e) => onChange(lever.key, parseFloat(e.target.value))}
+        aria-valuetext={lever.format(value)}
+      />
+      <div className="slider-range-hints" aria-hidden="true">
+        {lever.hints.map((h, i) => <span key={i}>{h}</span>)}
+      </div>
+    </div>
+  );
+}
 
-  const handleCorridorChange = (e) => {
-    const value = e.target.value === 'none' ? null : e.target.value;
-    onChangeScenario({
-      ...scenario,
-      closedCorridorId: value
-    });
-  };
-
-  const handleApplyPreset = (preset) => {
-    onChangeScenario(preset.inputs);
-  };
+export default function SimulatorControls({ scenario, onChangeScenario, onResetScenario }) {
+  const activePreset = findPreset(scenario);
+  const setLever = (key, value) => onChangeScenario({ ...scenario, [key]: value });
 
   return (
     <section aria-labelledby="simulator-controls-heading" className="panel simulator-controls">
       <div className="panel-header">
-        <h2 id="simulator-controls-heading" className="panel-title">What-If Simulator Controls</h2>
-        <button
-          type="button"
-          className="btn btn-sm btn-outline"
-          onClick={onResetScenario}
-          aria-label="Reset simulation parameters to calibrated baseline"
-        >
-          Reset Scenario
+        <h2 id="simulator-controls-heading" className="panel-title">What-if controls</h2>
+        <button type="button" className="btn btn-sm btn-outline" onClick={onResetScenario}>
+          Reset to today
         </button>
       </div>
 
-      {/* Preset Scenario Selector */}
       <div className="control-group preset-group">
-        <span id="presets-label" className="control-label">
-          Scenario Presets
-        </span>
+        <span id="presets-label" className="control-label">Scenarios</span>
         <div className="preset-buttons" role="group" aria-labelledby="presets-label">
           {PRESET_SCENARIOS.map((preset) => {
             const isActive = activePreset?.id === preset.id;
@@ -70,7 +88,7 @@ export default function SimulatorControls({
                 key={preset.id}
                 type="button"
                 className={`btn btn-preset ${isActive ? 'btn-preset-active' : ''}`}
-                onClick={() => handleApplyPreset(preset)}
+                onClick={() => onChangeScenario(preset.inputs)}
                 title={preset.description}
                 aria-pressed={isActive}
               >
@@ -79,121 +97,37 @@ export default function SimulatorControls({
             );
           })}
         </div>
+        {activePreset && <p className="field-hint">{activePreset.description}</p>}
       </div>
 
-      <div className="divider" aria-hidden="true"></div>
-
-      {/* Slider 1: Private Vehicles */}
       <div className="form-group">
-        <div className="form-label-row">
-          <label htmlFor="slider-private-vehicles">Private Vehicle Usage</label>
-          <span className="control-value tabular-nums">
-            {Math.round(privateVehicleModifier * 100)}%
-          </span>
-        </div>
-        <input
-          id="slider-private-vehicles"
-          type="range"
-          className="range-slider"
-          min="0.5"
-          max="1.5"
-          step="0.05"
-          value={privateVehicleModifier}
-          onChange={(e) => handleSliderChange('privateVehicleModifier', e.target.value)}
-          aria-valuemin="50"
-          aria-valuemax="150"
-          aria-valuenow={Math.round(privateVehicleModifier * 100)}
-          aria-valuetext={`${Math.round(privateVehicleModifier * 100)} percent`}
-        />
-        <div className="slider-range-hints" aria-hidden="true">
-          <span>50% (Low)</span>
-          <span>100% (Base)</span>
-          <span>150% (Surge)</span>
-        </div>
-      </div>
-
-      {/* Slider 2: Public Transit Service */}
-      <div className="form-group">
-        <div className="form-label-row">
-          <label htmlFor="slider-public-transit">Public Transit Service</label>
-          <span className="control-value tabular-nums">
-            {Math.round(publicTransitModifier * 100)}%
-          </span>
-        </div>
-        <input
-          id="slider-public-transit"
-          type="range"
-          className="range-slider"
-          min="0.5"
-          max="2.0"
-          step="0.05"
-          value={publicTransitModifier}
-          onChange={(e) => handleSliderChange('publicTransitModifier', e.target.value)}
-          aria-valuemin="50"
-          aria-valuemax="200"
-          aria-valuenow={Math.round(publicTransitModifier * 100)}
-          aria-valuetext={`${Math.round(publicTransitModifier * 100)} percent`}
-        />
-        <div className="slider-range-hints" aria-hidden="true">
-          <span>50% (Cut)</span>
-          <span>100% (Base)</span>
-          <span>200% (High Cap)</span>
-        </div>
-      </div>
-
-      {/* Slider 3: Delivery Freight Volume */}
-      <div className="form-group">
-        <div className="form-label-row">
-          <label htmlFor="slider-delivery-freight">Delivery / Freight Volume</label>
-          <span className="control-value tabular-nums">
-            {Math.round(deliveryFreightModifier * 100)}%
-          </span>
-        </div>
-        <input
-          id="slider-delivery-freight"
-          type="range"
-          className="range-slider"
-          min="0.5"
-          max="2.0"
-          step="0.05"
-          value={deliveryFreightModifier}
-          onChange={(e) => handleSliderChange('deliveryFreightModifier', e.target.value)}
-          aria-valuemin="50"
-          aria-valuemax="200"
-          aria-valuenow={Math.round(deliveryFreightModifier * 100)}
-          aria-valuetext={`${Math.round(deliveryFreightModifier * 100)} percent`}
-        />
-        <div className="slider-range-hints" aria-hidden="true">
-          <span>50% (Light)</span>
-          <span>100% (Base)</span>
-          <span>200% (Peak)</span>
-        </div>
-      </div>
-
-      {/* Corridor Closure Dropdown */}
-      <div className="form-group">
-        <label htmlFor="select-corridor-closure" className="form-label-simple">
-          Corridor Chokepoint / Road Closure
-        </label>
+        <label htmlFor="select-corridor-closure" className="form-label-simple">Close a corridor</label>
         <select
           id="select-corridor-closure"
           className="select-input"
-          value={closedCorridorId || 'none'}
-          onChange={handleCorridorChange}
+          value={scenario.closedCorridorId || 'none'}
+          onChange={(e) => setLever('closedCorridorId', e.target.value === 'none' ? null : e.target.value)}
         >
-          <option value="none">None (All Corridors Open)</option>
+          <option value="none">None (all corridors open)</option>
           {CORRIDORS.map((corridor) => (
-            <option key={corridor.id} value={corridor.id}>
-              {corridor.name} (closed)
-            </option>
+            <option key={corridor.id} value={corridor.id}>{corridor.name}</option>
           ))}
         </select>
-        {closedCorridorId && (
+        {scenario.closedCorridorId && (
           <p className="field-hint text-critical">
-            The closed corridor's arterial lanes are removed from capacity in every zone it crosses.
+            Its arterial lanes are removed in every zone it crosses. Part of its traffic reroutes through neighbouring zones.
           </p>
         )}
       </div>
+
+      {LEVER_GROUPS.map((group) => (
+        <fieldset key={group.title} className="lever-group">
+          <legend className="control-label">{group.title}</legend>
+          {group.levers.map((lever) => (
+            <Lever key={lever.key} lever={lever} value={scenario[lever.key]} onChange={setLever} />
+          ))}
+        </fieldset>
+      ))}
     </section>
   );
 }

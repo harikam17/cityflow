@@ -58,6 +58,24 @@
     "year": "2020"
    },
    {
+    "id": "bbmp-ward-census",
+    "name": "BBMP ward-wise data (2011 census population, 198 wards, with zone)",
+    "url": "https://data.opencity.in/dataset/e40ab411-c575-4c90-8bde-31bcb8df575f",
+    "year": "2011 census"
+   },
+   {
+    "id": "ato-sop",
+    "name": "ADB / Asian Transport Observatory, Bengaluru Urban Transport - State of Play (CMP 2020 trip lengths by mode)",
+    "url": "https://asiantransportobservatory.org/documents/337/Bangalore_urban_state_of_play.pdf",
+    "year": "2023"
+   },
+   {
+    "id": "icra-office",
+    "name": "ICRA, Commercial Real Estate - Office - Bengaluru (Grade-A stock, occupancy, regional split)",
+    "url": "https://www.icra.in/Rating/DownloadResearchSummaryReport/6188",
+    "year": "March 2025"
+   },
+   {
     "id": "bbmp-plants",
     "name": "BBMP Waste Processing Plants",
     "url": "https://data.opencity.in/dataset/bbmp-solid-waste-management-data",
@@ -82,6 +100,11 @@
    "lcv": 1.4,
    "truck": 2.2
   },
+  "tripLengthKm": {
+   "twoWheeler": 9.8,
+   "carVan": 10.2,
+   "taxi": 13.1
+  },
   "bmtcFleet": 6143,
   "observedPeakSpeedKmph": {
    "private": 11,
@@ -96,6 +119,13 @@
    "truck": 17740,
    "mav": 4019
   },
+  "officeStock": {
+   "gradeAMsf": 263,
+   "occupancy": 0.886,
+   "northEastSouthEastShare": 0.86,
+   "asOf": "2024-12"
+  },
+  "officeStockCagr": 0.075,
   "assumptions": {
    "peakHourFactor": {
     "value": 0.1,
@@ -117,9 +147,13 @@
     "value": 2,
     "basis": "Delay-curve exponent for signal-controlled urban networks, where delay grows closer to linearly with load than on uninterrupted highways (the original BPR value of 4)."
    },
-   "tripEndSplit": {
-    "value": 0.5,
-    "basis": "Each trip loads roads at both ends: half of peak vehicle-km is assigned by residents (trip productions), half by jobs (trip attractions)."
+   "peakWorkTripShare": {
+    "value": 0.6,
+    "basis": "Share of peak-hour trips going to a workplace; the rest (school, errands) are attracted in proportion to population."
+   },
+   "routeCircuity": {
+    "value": 1.3,
+    "basis": "Road distance / straight-line distance between zone centres (typical urban value 1.2-1.4)."
    },
    "busPeakSpeedKmph": {
     "value": 8,
@@ -159,17 +193,36 @@
      "logistics": 0.3,
      "waste": 0.3
     },
-    "basis": "Composite index weights; policy choice, not data."
+    "basis": "Composite index weights; policy choice, not data. The three indices are also shown separately."
+   },
+   "sqftPerOfficeSeat": {
+    "value": 110,
+    "basis": "Gross leasable area per office seat; Indian Grade-A benchmark 100-125 sq ft."
+   },
+   "officeClusterSplit": {
+    "value": "data/office-clusters.csv",
+    "basis": "Split of ICRA's 263 msf across 15 named clusters. Region totals match ICRA (86% north-east + south-east; ORR, Whitefield and Nagavara ~36%); the split within a region is estimated. Clusters outside BBMP go to the nearest zone, whose roads carry their commute."
+   },
+   "metroServiceElasticity": {
+    "value": 0.5,
+    "basis": "Ridership elasticity to metro service (frequency / coverage); same TCRP Report 95 value as bus."
+   },
+   "closureDiversionShare": {
+    "value": 0.3,
+    "basis": "Share of a closed corridor's displaced peak traffic that reroutes through neighbouring zones; the rest diverts to parallel roads inside the zone."
+   },
+   "offPeakTravelTimeIndex": {
+    "value": 1.3,
+    "basis": "Travel-time index for night / off-peak runs (near free flow, with signal delay)."
    }
   },
   "calibration": {
-   "bprAlpha": 2.1472,
    "targetTravelTimeIndex": 3.636,
-   "method": "alpha solved so the demand-weighted mean zone travel-time index equals free-flow speed / CMP 2020 observed peak speed (40 / 11 km/h)."
+   "method": "alpha solved by the engine so the demand-weighted mean zone travel-time index equals free-flow speed / CMP 2020 observed peak speed (40 / 11 km/h)."
   }
  },
  "city": {
-  "populationBaseYear": 9701539,
+  "populationBaseYear": 13088083,
   "metroDailyBoardings": 704956,
   "metroStationsUnmatched": [
    "Singayyanapalya"
@@ -177,7 +230,160 @@
   "freightDemandTpd": 154164,
   "wasteCollectedTpdMay2020": 3766.0,
   "busPeakBusKmPerHr": 49144,
-  "goodsPeakVehicles": 32373
+  "goodsPeakVehicles": 42243,
+  "officeClusters": [
+   {
+    "name": "ORR Bellandur-Marathahalli (Ecospace / RMZ Ecoworld / Prestige Tech Park)",
+    "region": "SE",
+    "zone": "zone-mahadevapura",
+    "insideBbmp": true,
+    "stockMsf": 30.0,
+    "seats": 241636,
+    "lat": 12.93,
+    "lon": 77.681
+   },
+   {
+    "name": "ORR Agara-HSR-Silk Board",
+    "region": "SE",
+    "zone": "zone-bommanahalli",
+    "insideBbmp": true,
+    "stockMsf": 7.0,
+    "seats": 56382,
+    "lat": 12.92,
+    "lon": 77.642
+   },
+   {
+    "name": "ORR Doddanekundi-Kadubeesanahalli",
+    "region": "NE",
+    "zone": "zone-mahadevapura",
+    "insideBbmp": true,
+    "stockMsf": 8.0,
+    "seats": 64436,
+    "lat": 12.965,
+    "lon": 77.696
+   },
+   {
+    "name": "Whitefield (ITPL / EPIP / Brookefield)",
+    "region": "NE",
+    "zone": "zone-mahadevapura",
+    "insideBbmp": true,
+    "stockMsf": 30.0,
+    "seats": 241636,
+    "lat": 12.982,
+    "lon": 77.729
+   },
+   {
+    "name": "Nagavara (Manyata Embassy Business Park)",
+    "region": "NE",
+    "zone": "zone-yelahanka",
+    "insideBbmp": true,
+    "stockMsf": 20.0,
+    "seats": 161091,
+    "lat": 13.047,
+    "lon": 77.621
+   },
+   {
+    "name": "Hebbal / Bellary Road (Kirloskar / Embassy Riverside)",
+    "region": "NE",
+    "zone": "zone-east",
+    "insideBbmp": true,
+    "stockMsf": 22.0,
+    "seats": 177200,
+    "lat": 13.04,
+    "lon": 77.593
+   },
+   {
+    "name": "Airport corridor (Yelahanka / Bagalur / KIADB Aerospace)",
+    "region": "NE",
+    "zone": "zone-yelahanka",
+    "insideBbmp": true,
+    "stockMsf": 14.0,
+    "seats": 112764,
+    "lat": 13.13,
+    "lon": 77.62
+   },
+   {
+    "name": "Old Madras Road / CV Raman Nagar (Bagmane)",
+    "region": "NE",
+    "zone": "zone-east",
+    "insideBbmp": true,
+    "stockMsf": 20.0,
+    "seats": 161091,
+    "lat": 12.983,
+    "lon": 77.662
+   },
+   {
+    "name": "Electronic City / Hosur Road",
+    "region": "SE",
+    "zone": "zone-bommanahalli",
+    "insideBbmp": false,
+    "stockMsf": 30.0,
+    "seats": 241636,
+    "lat": 12.845,
+    "lon": 77.67
+   },
+   {
+    "name": "Sarjapur Road (Wipro / RGA Tech Park)",
+    "region": "SE",
+    "zone": "zone-mahadevapura",
+    "insideBbmp": true,
+    "stockMsf": 20.0,
+    "seats": 161091,
+    "lat": 12.908,
+    "lon": 77.695
+   },
+   {
+    "name": "SBD: Domlur / Koramangala / Indiranagar (Embassy Golflinks)",
+    "region": "SE",
+    "zone": "zone-east",
+    "insideBbmp": true,
+    "stockMsf": 25.0,
+    "seats": 201364,
+    "lat": 12.956,
+    "lon": 77.642
+   },
+   {
+    "name": "CBD: MG Road / UB City / Vittal Mallya Road",
+    "region": "Other",
+    "zone": "zone-east",
+    "insideBbmp": true,
+    "stockMsf": 15.0,
+    "seats": 120818,
+    "lat": 12.973,
+    "lon": 77.608
+   },
+   {
+    "name": "Bannerghatta Road / JP Nagar",
+    "region": "Other",
+    "zone": "zone-bommanahalli",
+    "insideBbmp": true,
+    "stockMsf": 10.0,
+    "seats": 80545,
+    "lat": 12.895,
+    "lon": 77.598
+   },
+   {
+    "name": "Yeshwantpur / Rajajinagar (WTC / Brigade Gateway)",
+    "region": "Other",
+    "zone": "zone-west",
+    "insideBbmp": true,
+    "stockMsf": 8.0,
+    "seats": 64436,
+    "lat": 13.013,
+    "lon": 77.555
+   },
+   {
+    "name": "Mysore Road (Global Village Tech Park)",
+    "region": "Other",
+    "zone": "zone-rrnagar",
+    "insideBbmp": true,
+    "stockMsf": 4.0,
+    "seats": 32218,
+    "lat": 12.92,
+    "lon": 77.499
+   }
+  ],
+  "officeSeatsAddedSince2011Share": 0.609
  },
  "corridors": [
   {
@@ -641,15 +847,18 @@
    ],
    "areaKm2": 49.9,
    "demographics": {
-    "population2001": 1194512,
-    "population2011": 1405560,
+    "population2001": 1084399,
+    "population2011": 1275992,
     "populationGrowthRate": 0.0164,
-    "populationBaseYear": 1765110,
+    "populationBaseYear": 1602398,
     "csvAreaKm2": 52.0,
     "boundaryRescaleFactor": 0.959,
     "perCapitaIncomeINR": 8700.0,
-    "jobsShare": 0.27544,
-    "jobsBaseline": 743901
+    "jobsShare": 0.1962,
+    "jobsBaseline": 783171,
+    "jobs2011": 743901,
+    "officeJobsAdded": 39270,
+    "officeJobsShare": 0.0501
    },
    "mobility": {
     "perCapitaTripRate": 1.52,
@@ -676,7 +885,7 @@
     },
     "tripsUnder15MinPct": 14.0,
     "tripsUnder30MinPct": 24.0,
-    "dailyTrips": 2682968
+    "dailyTrips": 2435645
    },
    "roads": {
     "roadKm": 1324.6,
@@ -728,20 +937,26 @@
      "Yeshwantpur"
     ],
     "metroDailyBoardings": 170977,
-    "ptDailyTrips": 840068,
-    "busPeakBusKmPerHr": 10356,
-    "busPeakPcuKmPerHr": 22784
+    "ptDailyTrips": 762628,
+    "busPeakBusKmPerHr": 7086,
+    "busPeakPcuKmPerHr": 15589
    },
    "waste": {
     "collectedTpdApril2020": 663.0,
     "collectedTpdMay2020": 781.0,
     "generationTpd": 847.2,
-    "processingCapacityTpd": 500.3
+    "processingCapacityTpd": 336.7
    },
+   "neighbours": [
+    "zone-east",
+    "zone-rrnagar",
+    "zone-south",
+    "zone-yelahanka"
+   ],
    "freight": {
-    "goodsPeakVehicles": 8917,
-    "goodsPeakPcuKmPerHr": 126334,
-    "freightDemandTpd": 35256
+    "goodsPeakVehicles": 8288,
+    "goodsPeakPcuKmPerHr": 117422,
+    "freightDemandTpd": 24560
    }
   },
   {
@@ -1216,15 +1431,18 @@
    ],
    "areaKm2": 91.7,
    "demographics": {
-    "population2001": 1238889,
-    "population2011": 1539473,
+    "population2001": 1355338,
+    "population2011": 1684175,
     "populationGrowthRate": 0.022,
-    "populationBaseYear": 2086640,
+    "populationBaseYear": 2282772,
     "csvAreaKm2": 101.0,
     "boundaryRescaleFactor": 0.908,
     "perCapitaIncomeINR": 7100.0,
-    "jobsShare": 0.20496,
-    "jobsBaseline": 553547
+    "jobsShare": 0.23951,
+    "jobsBaseline": 956064,
+    "jobs2011": 553547,
+    "officeJobsAdded": 402517,
+    "officeJobsShare": 0.421
    },
    "mobility": {
     "perCapitaTripRate": 1.19,
@@ -1251,7 +1469,7 @@
     },
     "tripsUnder15MinPct": 13.0,
     "tripsUnder30MinPct": 32.0,
-    "dailyTrips": 2483101
+    "dailyTrips": 2716499
    },
    "roads": {
     "roadKm": 1781.3,
@@ -1298,20 +1516,27 @@
      "Trinity"
     ],
     "metroDailyBoardings": 123188,
-    "ptDailyTrips": 730324,
-    "busPeakBusKmPerHr": 9003,
-    "busPeakPcuKmPerHr": 19807
+    "ptDailyTrips": 798970,
+    "busPeakBusKmPerHr": 7424,
+    "busPeakPcuKmPerHr": 16332
    },
    "waste": {
     "collectedTpdApril2020": 768.0,
     "collectedTpdMay2020": 895.0,
     "generationTpd": 997.7,
-    "processingCapacityTpd": 591.5
+    "processingCapacityTpd": 479.6
    },
+   "neighbours": [
+    "zone-bommanahalli",
+    "zone-mahadevapura",
+    "zone-south",
+    "zone-west",
+    "zone-yelahanka"
+   ],
    "freight": {
-    "goodsPeakVehicles": 6635,
-    "goodsPeakPcuKmPerHr": 85709,
-    "freightDemandTpd": 32378
+    "goodsPeakVehicles": 10117,
+    "goodsPeakPcuKmPerHr": 130690,
+    "freightDemandTpd": 31906
    }
   },
   {
@@ -1702,15 +1927,18 @@
    ],
    "areaKm2": 61.0,
    "demographics": {
-    "population2001": 1486353,
-    "population2011": 1760700,
+    "population2001": 1656115,
+    "population2011": 1961797,
     "populationGrowthRate": 0.0171,
-    "populationBaseYear": 2231897,
+    "populationBaseYear": 2486811,
     "csvAreaKm2": 65.0,
     "boundaryRescaleFactor": 0.938,
     "perCapitaIncomeINR": 6500.0,
-    "jobsShare": 0.21176,
-    "jobsBaseline": 571915
+    "jobsShare": 0.14327,
+    "jobsBaseline": 571915,
+    "jobs2011": 571915,
+    "officeJobsAdded": 0,
+    "officeJobsShare": 0.0
    },
    "mobility": {
     "perCapitaTripRate": 1.52,
@@ -1737,7 +1965,7 @@
     },
     "tripsUnder15MinPct": 9.0,
     "tripsUnder30MinPct": 24.0,
-    "dailyTrips": 3392483
+    "dailyTrips": 3779952
    },
    "roads": {
     "roadKm": 1701.6,
@@ -1796,20 +2024,26 @@
      "South End Circle"
     ],
     "metroDailyBoardings": 113468,
-    "ptDailyTrips": 997789,
-    "busPeakBusKmPerHr": 12300,
-    "busPeakPcuKmPerHr": 27061
+    "ptDailyTrips": 1111751,
+    "busPeakBusKmPerHr": 10330,
+    "busPeakPcuKmPerHr": 22726
    },
    "waste": {
     "collectedTpdApril2020": 717.0,
     "collectedTpdMay2020": 833.0,
     "generationTpd": 906.6,
-    "processingCapacityTpd": 632.7
+    "processingCapacityTpd": 522.5
    },
+   "neighbours": [
+    "zone-bommanahalli",
+    "zone-east",
+    "zone-rrnagar",
+    "zone-west"
+   ],
    "freight": {
-    "goodsPeakVehicles": 6855,
-    "goodsPeakPcuKmPerHr": 82794,
-    "freightDemandTpd": 34056
+    "goodsPeakVehicles": 6052,
+    "goodsPeakPcuKmPerHr": 73095,
+    "freightDemandTpd": 25690
    }
   },
   {
@@ -2064,15 +2298,18 @@
    ],
    "areaKm2": 99.3,
    "demographics": {
-    "population2001": 243149,
-    "population2011": 380676,
+    "population2001": 348617,
+    "population2011": 545799,
     "populationGrowthRate": 0.0458,
-    "populationBaseYear": 713039,
+    "populationBaseYear": 1022326,
     "csvAreaKm2": 151.0,
     "boundaryRescaleFactor": 0.658,
     "perCapitaIncomeINR": 6900.0,
-    "jobsShare": 0.04347,
-    "jobsBaseline": 117393
+    "jobsShare": 0.07122,
+    "jobsBaseline": 284290,
+    "jobs2011": 117393,
+    "officeJobsAdded": 166897,
+    "officeJobsShare": 0.5871
    },
    "mobility": {
     "perCapitaTripRate": 1.48,
@@ -2099,7 +2336,7 @@
     },
     "tripsUnder15MinPct": 11.0,
     "tripsUnder30MinPct": 17.0,
-    "dailyTrips": 1055298
+    "dailyTrips": 1513043
    },
    "roads": {
     "roadKm": 1467.4,
@@ -2136,20 +2373,27 @@
    "transit": {
     "metroStations": [],
     "metroDailyBoardings": 0,
-    "ptDailyTrips": 323903,
-    "busPeakBusKmPerHr": 3993,
-    "busPeakPcuKmPerHr": 8785
+    "ptDailyTrips": 464399,
+    "busPeakBusKmPerHr": 4315,
+    "busPeakPcuKmPerHr": 9493
    },
    "waste": {
     "collectedTpdApril2020": 241.0,
     "collectedTpdMay2020": 271.0,
     "generationTpd": 339.1,
-    "processingCapacityTpd": 202.1
+    "processingCapacityTpd": 214.8
    },
+   "neighbours": [
+    "zone-dasarahalli",
+    "zone-east",
+    "zone-mahadevapura",
+    "zone-rrnagar",
+    "zone-west"
+   ],
    "freight": {
-    "goodsPeakVehicles": 1407,
-    "goodsPeakPcuKmPerHr": 17441,
-    "freightDemandTpd": 9016
+    "goodsPeakVehicles": 3008,
+    "goodsPeakPcuKmPerHr": 37289,
+    "freightDemandTpd": 11511
    }
   },
   {
@@ -2796,15 +3040,18 @@
    ],
    "areaKm2": 171.1,
    "demographics": {
-    "population2001": 455887,
-    "population2011": 693161,
+    "population2001": 578105,
+    "population2011": 878991,
     "populationGrowthRate": 0.0428,
-    "populationBaseYear": 1246242,
+    "populationBaseYear": 1580347,
     "csvAreaKm2": 132.0,
     "boundaryRescaleFactor": 1.296,
     "perCapitaIncomeINR": 10800.0,
-    "jobsShare": 0.15146,
-    "jobsBaseline": 409071
+    "jobsShare": 0.21069,
+    "jobsBaseline": 841041,
+    "jobs2011": 409071,
+    "officeJobsAdded": 431970,
+    "officeJobsShare": 0.5136
    },
    "mobility": {
     "perCapitaTripRate": 1.35,
@@ -2831,7 +3078,7 @@
     },
     "tripsUnder15MinPct": 15.0,
     "tripsUnder30MinPct": 22.0,
-    "dailyTrips": 1682427
+    "dailyTrips": 2133468
    },
    "roads": {
     "roadKm": 2129.7,
@@ -2881,20 +3128,25 @@
      "Whitefield (Kadugodi)"
     ],
     "metroDailyBoardings": 127610,
-    "ptDailyTrips": 490027,
-    "busPeakBusKmPerHr": 6041,
-    "busPeakPcuKmPerHr": 13290
+    "ptDailyTrips": 621398,
+    "busPeakBusKmPerHr": 5774,
+    "busPeakPcuKmPerHr": 12702
    },
    "waste": {
     "collectedTpdApril2020": 270.0,
     "collectedTpdMay2020": 337.0,
     "generationTpd": 415.5,
-    "processingCapacityTpd": 353.3
+    "processingCapacityTpd": 332.1
    },
+   "neighbours": [
+    "zone-bommanahalli",
+    "zone-east",
+    "zone-yelahanka"
+   ],
    "freight": {
-    "goodsPeakVehicles": 4903,
-    "goodsPeakPcuKmPerHr": 56199,
-    "freightDemandTpd": 21577
+    "goodsPeakVehicles": 8900,
+    "goodsPeakPcuKmPerHr": 102008,
+    "freightDemandTpd": 25548
    }
   },
   {
@@ -3437,15 +3689,18 @@
    ],
    "areaKm2": 97.7,
    "demographics": {
-    "population2001": 210059,
-    "population2011": 327920,
+    "population2001": 582227,
+    "population2011": 908906,
     "populationGrowthRate": 0.0455,
-    "populationBaseYear": 611738,
+    "populationBaseYear": 1695569,
     "csvAreaKm2": 141.0,
     "boundaryRescaleFactor": 0.693,
     "perCapitaIncomeINR": 14200.0,
-    "jobsShare": 0.06454,
-    "jobsBaseline": 174314
+    "jobsShare": 0.10146,
+    "jobsBaseline": 405026,
+    "jobs2011": 174314,
+    "officeJobsAdded": 230711,
+    "officeJobsShare": 0.5696
    },
    "mobility": {
     "perCapitaTripRate": 1.51,
@@ -3472,7 +3727,7 @@
     },
     "tripsUnder15MinPct": 13.0,
     "tripsUnder30MinPct": 20.0,
-    "dailyTrips": 923724
+    "dailyTrips": 2560310
    },
    "roads": {
     "roadKm": 1857.6,
@@ -3525,20 +3780,26 @@
      "Yelachenahalli"
     ],
     "metroDailyBoardings": 39966,
-    "ptDailyTrips": 246936,
-    "busPeakBusKmPerHr": 3044,
-    "busPeakPcuKmPerHr": 6697
+    "ptDailyTrips": 684439,
+    "busPeakBusKmPerHr": 6360,
+    "busPeakPcuKmPerHr": 13991
    },
    "waste": {
     "collectedTpdApril2020": 243.0,
     "collectedTpdMay2020": 284.0,
     "generationTpd": 354.8,
-    "processingCapacityTpd": 173.4
+    "processingCapacityTpd": 356.3
    },
+   "neighbours": [
+    "zone-east",
+    "zone-mahadevapura",
+    "zone-rrnagar",
+    "zone-south"
+   ],
    "freight": {
-    "goodsPeakVehicles": 2089,
-    "goodsPeakPcuKmPerHr": 22505,
-    "freightDemandTpd": 9836
+    "goodsPeakVehicles": 4286,
+    "goodsPeakPcuKmPerHr": 46165,
+    "freightDemandTpd": 17807
    }
   },
   {
@@ -4341,15 +4602,18 @@
    ],
    "areaKm2": 115.7,
    "demographics": {
-    "population2001": 212916,
-    "population2011": 371791,
+    "population2001": 425162,
+    "population2011": 742411,
     "populationGrowthRate": 0.0573,
-    "populationBaseYear": 811382,
+    "populationBaseYear": 1620205,
     "csvAreaKm2": 126.0,
     "boundaryRescaleFactor": 0.918,
     "perCapitaIncomeINR": 4600.0,
-    "jobsShare": 0.04224,
-    "jobsBaseline": 114071
+    "jobsShare": 0.0335,
+    "jobsBaseline": 133706,
+    "jobs2011": 114071,
+    "officeJobsAdded": 19635,
+    "officeJobsShare": 0.1469
    },
    "mobility": {
     "perCapitaTripRate": 1.27,
@@ -4376,7 +4640,7 @@
     },
     "tripsUnder15MinPct": 18.0,
     "tripsUnder30MinPct": 33.0,
-    "dailyTrips": 1030455
+    "dailyTrips": 2057660
    },
    "roads": {
     "roadKm": 2226.7,
@@ -4433,20 +4697,27 @@
      "Vajarahalli"
     ],
     "metroDailyBoardings": 64649,
-    "ptDailyTrips": 262665,
-    "busPeakBusKmPerHr": 3238,
-    "busPeakPcuKmPerHr": 7124
+    "ptDailyTrips": 524502,
+    "busPeakBusKmPerHr": 4874,
+    "busPeakPcuKmPerHr": 10722
    },
    "waste": {
     "collectedTpdApril2020": 207.0,
     "collectedTpdMay2020": 242.0,
     "generationTpd": 319.8,
-    "processingCapacityTpd": 230.0
+    "processingCapacityTpd": 340.4
    },
+   "neighbours": [
+    "zone-bommanahalli",
+    "zone-dasarahalli",
+    "zone-south",
+    "zone-west",
+    "zone-yelahanka"
+   ],
    "freight": {
-    "goodsPeakVehicles": 1367,
-    "goodsPeakPcuKmPerHr": 16590,
-    "freightDemandTpd": 9702
+    "goodsPeakVehicles": 1415,
+    "goodsPeakPcuKmPerHr": 17168,
+    "freightDemandTpd": 12124
    }
   },
   {
@@ -4725,15 +4996,18 @@
    ],
    "areaKm2": 29.3,
    "demographics": {
-    "population2001": 86794,
-    "population2011": 131555,
+    "population2001": 293988,
+    "population2011": 445604,
     "populationGrowthRate": 0.0425,
-    "populationBaseYear": 235491,
+    "populationBaseYear": 797655,
     "csvAreaKm2": 61.0,
     "boundaryRescaleFactor": 0.481,
     "perCapitaIncomeINR": 5800.0,
-    "jobsShare": 0.00614,
-    "jobsBaseline": 16571
+    "jobsShare": 0.00415,
+    "jobsBaseline": 16571,
+    "jobs2011": 16571,
+    "officeJobsAdded": 0,
+    "officeJobsShare": 0.0
    },
    "mobility": {
     "perCapitaTripRate": 1.48,
@@ -4760,7 +5034,7 @@
     },
     "tripsUnder15MinPct": 13.0,
     "tripsUnder30MinPct": 22.0,
-    "dailyTrips": 348527
+    "dailyTrips": 1180529
    },
    "roads": {
     "roadKm": 682.5,
@@ -4806,20 +5080,24 @@
      "Nagasandra"
     ],
     "metroDailyBoardings": 22112,
-    "ptDailyTrips": 94745,
-    "busPeakBusKmPerHr": 1168,
-    "busPeakPcuKmPerHr": 2570
+    "ptDailyTrips": 320921,
+    "busPeakBusKmPerHr": 2982,
+    "busPeakPcuKmPerHr": 6560
    },
    "waste": {
     "collectedTpdApril2020": 102.0,
     "collectedTpdMay2020": 123.0,
     "generationTpd": 151.4,
-    "processingCapacityTpd": 66.8
+    "processingCapacityTpd": 167.6
    },
+   "neighbours": [
+    "zone-rrnagar",
+    "zone-yelahanka"
+   ],
    "freight": {
-    "goodsPeakVehicles": 199,
-    "goodsPeakPcuKmPerHr": 2347,
-    "freightDemandTpd": 2344
+    "goodsPeakVehicles": 175,
+    "goodsPeakPcuKmPerHr": 2072,
+    "freightDemandTpd": 5018
    }
   }
  ]

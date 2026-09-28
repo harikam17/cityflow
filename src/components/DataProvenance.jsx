@@ -1,5 +1,6 @@
 import React from 'react';
 import { CITY_DATASET } from '../data/cityData';
+import { calibrateAlpha, calibrateGravityBeta } from '../engine/simulationEngine';
 
 function formatValue(value) {
   if (typeof value === 'object') {
@@ -23,9 +24,11 @@ export default function DataProvenance() {
       </div>
 
       <p className="provenance-description">
-        The one calibrated parameter is the delay-curve coefficient (α = {calibration.bprAlpha}): it is solved so the
-        simulated city-wide peak travel-time index equals {calibration.targetTravelTimeIndex}, the ratio of free-flow
-        speed to the {constants.observedPeakSpeedKmph.private} km/h peak speed observed in the CMP 2020 speed survey.
+        Two parameters are fitted, both by the engine at start-up. The delay-curve coefficient (α = {calibrateAlpha(CITY_DATASET).toFixed(2)})
+        is solved so the simulated city-wide peak travel-time index equals {calibration.targetTravelTimeIndex}, the ratio of free-flow
+        speed to the {constants.observedPeakSpeedKmph.private} km/h peak speed observed in the CMP 2020 speed survey. The gravity
+        model's distance decay (β = {calibrateGravityBeta(CITY_DATASET).toFixed(3)} per km) is solved so the mean modelled trip
+        matches the CMP 2020 trip lengths by mode. Every figure in the zone inspector is tagged Measured, Derived or Estimated.
       </p>
 
       <div className="provenance-grid">

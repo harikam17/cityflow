@@ -15,3 +15,6 @@ dist-ssr
 # OpenStreetMap raw tiles (~75 MB); re-fetch with scripts/dataset/fetch_raw.sh
 data/raw/osm/
 __pycache__/
+
+# Local reference notes, not part of the project
+VIBECODED_FRONTEND_TELLS.md

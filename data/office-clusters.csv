@@ -1,0 +1,16 @@
+cluster,region,lon,lat,stockMsf,note
+ORR Bellandur-Marathahalli (Ecospace / RMZ Ecoworld / Prestige Tech Park),SE,77.6810,12.9300,30,"ORR (SE) is ICRA's #1 micro-market; ORR + Whitefield + Nagavara = ~36% of 263 msf"
+ORR Agara-HSR-Silk Board,SE,77.6420,12.9200,7,Southern stretch of the ORR (SE) micro-market
+ORR Doddanekundi-Kadubeesanahalli,NE,77.6960,12.9650,8,Northern stretch of the ORR (SE) micro-market
+Whitefield (ITPL / EPIP / Brookefield),NE,77.7290,12.9820,30,ICRA top-3 micro-market
+Nagavara (Manyata Embassy Business Park),NE,77.6210,13.0470,20,ICRA top-3 micro-market
+Hebbal / Bellary Road (Kirloskar / Embassy Riverside),NE,77.5930,13.0400,22,North-east region
+Airport corridor (Yelahanka / Bagalur / KIADB Aerospace),NE,77.6200,13.1300,14,North-east region
+Old Madras Road / CV Raman Nagar (Bagmane),NE,77.6620,12.9830,20,North-east region
+Electronic City / Hosur Road,SE,77.6700,12.8450,30,South-east region; outside BBMP limits (assigned to the nearest zone)
+Sarjapur Road (Wipro / RGA Tech Park),SE,77.6950,12.9080,20,South-east region
+SBD: Domlur / Koramangala / Indiranagar (Embassy Golflinks),SE,77.6420,12.9560,25,South-east region
+CBD: MG Road / UB City / Vittal Mallya Road,Other,77.6080,12.9730,15,Remaining 14% outside NE/SE
+Bannerghatta Road / JP Nagar,Other,77.5980,12.8950,10,Remaining 14% outside NE/SE
+Yeshwantpur / Rajajinagar (WTC / Brigade Gateway),Other,77.5550,13.0130,8,Remaining 14% outside NE/SE
+Mysore Road (Global Village Tech Park),Other,77.4990,12.9200,4,Remaining 14% outside NE/SE

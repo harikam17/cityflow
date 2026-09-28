@@ -8,6 +8,7 @@ Inputs (all under data/):
   raw/bmrcl-station-hourly.csv.zip           Namma Metro hourly boardings per station, Aug-Sep 2025 (RTI, Vonter/bmrcl-ridership-hourly)
   raw/wikidata-metro-stations.json           metro station coordinates (Wikidata)
   derived/roads-by-zone.json                 output of extract_roads.py (OpenStreetMap)
+  office-clusters.csv                        Grade-A office clusters (ICRA Mar 2025 totals, cluster split estimated)
 
 Output:
   src/data/generated/bengaluruDataset.json   consumed by the app and the simulation engine
@@ -39,6 +40,9 @@ SOURCED = {
     "occupancy": {"twoWheeler": 1.5, "carVan": 2.3, "auto": 1.8, "taxi": 2.3, "bus": 37.5},
     # IRC:106-1990 Table 1 passenger car units
     "pcu": {"twoWheeler": 0.5, "carVan": 1.0, "auto": 1.2, "taxi": 1.0, "bus": 2.2, "lcv": 1.4, "truck": 2.2},
+    # CMP 2020 average trip length by mode (km), as reported in ADB/ATO "Bengaluru Urban Transport - State of Play".
+    # Auto-rickshaw has no published figure and uses each zone's survey average trip length.
+    "tripLengthKm": {"twoWheeler": 9.8, "carVan": 10.2, "taxi": 13.1},
     # CMP 2020 Table 2-7: BMTC fleet operated (2018)
     "bmtcFleet": 6143,
     # CMP 2020 speed & delay survey: average peak journey speeds on major corridors (km/h)
@@ -47,6 +51,11 @@ SOURCED = {
     "goodsVehicleShare": {"truck": 0.049, "lcv": 0.035},
     # CMP 2020 Table 2-18: goods vehicles entering Bengaluru per day by type
     "inboundGoodsVehiclesPerDay": {"lcv": 8450, "truck": 17740, "mav": 4019},
+    # ICRA, Commercial Real Estate - Office - Bengaluru (March 2025): Grade-A stock as of 31 Dec 2024,
+    # occupancy Dec 2024, share of stock in the north-east + south-east regions
+    "officeStock": {"gradeAMsf": 263, "occupancy": 0.886, "northEastSouthEastShare": 0.86, "asOf": "2024-12"},
+    # Bengaluru office stock CAGR 2013-2024 (industry reports); backs out the stock already present in 2011
+    "officeStockCagr": 0.075,
 }
 
 # ---------------------------------------------------------------------------
@@ -58,7 +67,8 @@ ASSUMPTIONS = {
     "majorRoadVehicleKmShare": {"value": 0.70, "basis": "Share of peak vehicle-km carried on the arterial / sub-arterial / expressway network; collectors and local streets carry the access legs of trips."},
     "freeFlowSpeedKmph": {"value": 40, "basis": "Free-flow speed on urban arterials (IRC:106 design speeds 50-60 km/h, reduced for signal density)."},
     "bprBeta": {"value": 2, "basis": "Delay-curve exponent for signal-controlled urban networks, where delay grows closer to linearly with load than on uninterrupted highways (the original BPR value of 4)."},
-    "tripEndSplit": {"value": 0.5, "basis": "Each trip loads roads at both ends: half of peak vehicle-km is assigned by residents (trip productions), half by jobs (trip attractions)."},
+    "peakWorkTripShare": {"value": 0.6, "basis": "Share of peak-hour trips going to a workplace; the rest (school, errands) are attracted in proportion to population."},
+    "routeCircuity": {"value": 1.3, "basis": "Road distance / straight-line distance between zone centres (typical urban value 1.2-1.4)."},
     "busPeakSpeedKmph": {"value": 8, "basis": "CMP 2020 observed public-transport peak journey speed (measured value reused as bus operating speed)."},
     "transitServiceElasticity": {"value": 0.5, "basis": "Ridership elasticity to service frequency of about +0.5 (TCRP Report 95, Ch. 9)."},
     "payloadTonnes": {"value": {"lcv": 2.0, "truck": 9.0, "mav": 20.0}, "basis": "Typical rated payloads for Indian LCV, 2-axle truck and multi-axle vehicle."},
@@ -66,7 +76,12 @@ ASSUMPTIONS = {
     "freightFleetUtilisation": {"value": 0.75, "basis": "Freight fleet sized to run at 75% utilisation under city-average baseline congestion (no public fleet-capacity data)."},
     "travelShareOfCycleTime": {"value": 0.5, "basis": "Half of a delivery / waste-collection cycle is driving; the rest is loading, unloading and handling. Congestion scales only the driving half."},
     "wasteProcessingCapacityTpd": {"value": 2750, "basis": "BBMP operational processing plants ('old sites') per BBMP plant list; 2,300 TPD of listed new sites excluded as commissioning status is unverified."},
-    "overallWeights": {"value": {"traffic": 0.4, "logistics": 0.3, "waste": 0.3}, "basis": "Composite index weights; policy choice, not data."},
+    "overallWeights": {"value": {"traffic": 0.4, "logistics": 0.3, "waste": 0.3}, "basis": "Composite index weights; policy choice, not data. The three indices are also shown separately."},
+    "sqftPerOfficeSeat": {"value": 110, "basis": "Gross leasable area per office seat; Indian Grade-A benchmark 100-125 sq ft."},
+    "officeClusterSplit": {"value": "data/office-clusters.csv", "basis": "Split of ICRA's 263 msf across 15 named clusters. Region totals match ICRA (86% north-east + south-east; ORR, Whitefield and Nagavara ~36%); the split within a region is estimated. Clusters outside BBMP go to the nearest zone, whose roads carry their commute."},
+    "metroServiceElasticity": {"value": 0.5, "basis": "Ridership elasticity to metro service (frequency / coverage); same TCRP Report 95 value as bus."},
+    "closureDiversionShare": {"value": 0.3, "basis": "Share of a closed corridor's displaced peak traffic that reroutes through neighbouring zones; the rest diverts to parallel roads inside the zone."},
+    "offPeakTravelTimeIndex": {"value": 1.3, "basis": "Travel-time index for night / off-peak runs (near free flow, with signal delay)."},
 }
 
 
@@ -161,6 +176,45 @@ STATION_ALIASES = {
 }
 
 
+def load_office_clusters(polys):
+    """Office seats added since 2011, by zone, from the Grade-A office clusters."""
+    stock = SOURCED["officeStock"]
+    sqft = ASSUMPTIONS["sqftPerOfficeSeat"]["value"]
+    # Stock in 2011 = stock(2024) / (1 + CAGR)^13. Only seats added since then are new jobs;
+    # the rest are already inside the 2011 employment density.
+    new_share = 1 - 1 / (1 + SOURCED["officeStockCagr"]) ** (2024 - 2011)
+    with open(ROOT / "data" / "office-clusters.csv", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    total_msf = sum(float(r["stockMsf"]) for r in rows)
+    by_zone = defaultdict(float)
+    clusters = []
+    for r in rows:
+        msf = float(r["stockMsf"]) * stock["gradeAMsf"] / total_msf
+        seats = msf * 1e6 * stock["occupancy"] / sqft
+        pt = Point(float(r["lon"]), float(r["lat"]))
+        inside = next((zid for zid, poly in polys.items() if poly.contains(pt)), None)
+        zid = inside or min(polys, key=lambda k: polys[k].distance(pt))
+        by_zone[zid] += seats * new_share
+        clusters.append({"name": r["cluster"], "region": r["region"], "zone": zid, "insideBbmp": inside is not None,
+                         "stockMsf": round(msf, 1), "seats": round(seats), "lat": float(r["lat"]), "lon": float(r["lon"])})
+    return by_zone, clusters, new_share
+
+
+def load_ward_population():
+    """2011 census population per BBMP zone, summed over its 198 wards (OpenCity ward data)."""
+    pop = defaultdict(int)
+    with open(RAW / "bbmp-ward-census-2011.csv", encoding="utf-8-sig") as f:
+        for r in csv.DictReader(f):
+            if r["Ward_No"].strip().isdigit():  # skip the city total row
+                pop[r["BBMP Zone Name"].strip()] += int(r["Population 2011"].replace(",", ""))
+    return pop
+
+
+def zone_adjacency(polys):
+    """Zones sharing a boundary (about 100 m tolerance for digitising gaps)."""
+    return {a: sorted(b for b in polys if b != a and polys[a].buffer(0.001).intersects(polys[b])) for a in polys}
+
+
 def norm(s):
     s = re.sub(r"\s+metro station$", "", s or "", flags=re.I)
     return re.sub(r"[^a-z0-9]", "", s.lower())
@@ -180,6 +234,9 @@ def main():
     roads = json.loads((DERIVED / "roads-by-zone.json").read_text(encoding="utf-8"))
     waste_apr, waste_may = load_waste_collections()
     metro, metro_city, metro_days, metro_unmatched = load_metro(polys)
+    office_new, office_clusters, office_new_share = load_office_clusters(polys)
+    ward_pop = load_ward_population()
+    adjacency = zone_adjacency(polys)
 
     A = {k: v["value"] for k, v in ASSUMPTIONS.items()}
     occ, pcu = SOURCED["occupancy"], SOURCED["pcu"]
@@ -187,17 +244,19 @@ def main():
     zones = []
     for z in ZONES:
         r = mob[z["csvName"]]
-        p2001, p2011 = float(r["Population in 2001"]), float(r["Population in 2011"])
-        cagr = (p2011 / p2001) ** (1 / 10) - 1
+        # Growth rate from the mobility CSV's 2001-2011 zone populations
+        cagr = (float(r["Population in 2011"]) / float(r["Population in 2001"])) ** (1 / 10) - 1
         csv_area = float(r["Area (in Sq. Km)"])
         kml_area = area_km2(polys[z["id"]])
-        # The CSV describes pre-2022 zone boundaries; rescale by density onto the 2022 polygon
-        # so demand and road capacity cover the same territory.
         area_ratio = kml_area / csv_area
-        p2001, p2011 = p2001 * area_ratio, p2011 * area_ratio
+        # 2011 population measured on the same boundary: sum of the zone's census wards
+        p2011 = ward_pop[z["wardZone"]]
+        p2001 = p2011 / (1 + cagr) ** 10
         p2020 = p2011 * (1 + cagr) ** 9
         p_base = p2011 * (1 + cagr) ** (BASE_YEAR - 2011)
-        jobs = float(r["Employment Density in 2011"]) * kml_area
+        # The CSV describes pre-2022 zone boundaries; its employment density is applied to the 2022 area
+        jobs2011 = float(r["Employment Density in 2011"]) * kml_area
+        jobs = jobs2011 + office_new[z["id"]]
 
         raw_shares = {
             "walk": pct(r["Walk- Mode Share"]), "bicycle": pct(r["Bicycle- Mode Share"]),
@@ -251,7 +310,9 @@ def main():
                 # Per-capita generation held at May-2020 level; scaled by population growth to base year
                 "generationTpd": round(waste_may[z["wasteName"]] * p_base / p2020, 1),
             },
-            "_jobs": jobs, "_ptTrips": daily_trips * shares["publicTransport"],
+            "neighbours": adjacency[z["id"]],
+            "_jobs": jobs, "_jobs2011": jobs2011, "_officeNew": office_new[z["id"]],
+            "_ptTrips": daily_trips * shares["publicTransport"],
         })
 
     # ---- City-level quantities allocated to zones --------------------------------
@@ -295,30 +356,14 @@ def main():
         zz["waste"]["processingCapacityTpd"] = round(processing * pop_share, 1)
         zz["demographics"]["jobsShare"] = round(jobs_share, 5)
         zz["demographics"]["jobsBaseline"] = round(zz["_jobs"])
-        del zz["_jobs"], zz["_ptTrips"]
+        zz["demographics"]["jobs2011"] = round(zz["_jobs2011"])
+        zz["demographics"]["officeJobsAdded"] = round(zz["_officeNew"])
+        zz["demographics"]["officeJobsShare"] = round(zz["_officeNew"] / zz["_jobs"], 4)
+        del zz["_jobs"], zz["_jobs2011"], zz["_officeNew"], zz["_ptTrips"]
 
-    # ---- Calibrate the delay-curve alpha to the CMP observed peak speed ----------
-    # Baseline V/C per zone computed exactly as the engine does (see src/engine/simulationEngine.js).
-    def resident_private_pcu_km(zz):
-        t, s = zz["mobility"]["dailyTrips"], zz["mobility"]["modeShares"]
-        L = zz["mobility"]["averageTripLengthKm"]
-        return sum(t * s[m] * A["peakHourFactor"] / occ[m] * pcu[m] * L for m in ("twoWheeler", "carVan", "auto", "taxi"))
-
-    city_private_pcu_km = sum(resident_private_pcu_km(zz) for zz in zones)
-
-    def baseline_vc(zz):
-        split = A["tripEndSplit"]
-        private = split * resident_private_pcu_km(zz) + (1 - split) * city_private_pcu_km * zz["demographics"]["jobsShare"]
-        demand = private + zz["transit"]["busPeakPcuKmPerHr"] + zz["freight"]["goodsPeakPcuKmPerHr"]
-        demand_major = demand * A["majorRoadVehicleKmShare"] * (A["peakDirectionShare"] / 0.5)
-        return demand_major / zz["roads"]["majorCapacityPcuKmPerHr"], demand
-
+    # The delay-curve alpha is calibrated by the engine (calibrateAlpha in simulationEngine.js),
+    # so the model and its calibration cannot drift apart.
     target_tti = A["freeFlowSpeedKmph"] / SOURCED["observedPeakSpeedKmph"]["private"]
-    vcs = [(baseline_vc(zz)) for zz in zones]
-    weights = [d for _, d in vcs]
-    # Solve alpha so the demand-weighted mean TTI equals the observed TTI (closed form: TTI linear in alpha)
-    mean_x = sum(w * vc ** A["bprBeta"] for (vc, _), w in zip(vcs, weights)) / sum(weights)
-    alpha = (target_tti - 1) / mean_x
 
     dataset = {
         "meta": {
@@ -335,13 +380,15 @@ def main():
                 {"id": "bmrcl", "name": "BMRCL station-hourly ridership (RTI)", "url": "https://github.com/Vonter/bmrcl-ridership-hourly", "year": f"Aug-Sep 2025 ({metro_days} days)"},
                 {"id": "wikidata", "name": "Wikidata metro station coordinates", "url": "https://query.wikidata.org", "year": "2026"},
                 {"id": "bbmp-waste", "name": "BBMP Segregated Waste Collections Apr-May 2020", "url": "https://data.opencity.in/dataset/bbmp-solid-waste-management-data", "year": "2020"},
+                {"id": "bbmp-ward-census", "name": "BBMP ward-wise data (2011 census population, 198 wards, with zone)", "url": "https://data.opencity.in/dataset/e40ab411-c575-4c90-8bde-31bcb8df575f", "year": "2011 census"},
+                {"id": "ato-sop", "name": "ADB / Asian Transport Observatory, Bengaluru Urban Transport - State of Play (CMP 2020 trip lengths by mode)", "url": "https://asiantransportobservatory.org/documents/337/Bangalore_urban_state_of_play.pdf", "year": "2023"},
+                {"id": "icra-office", "name": "ICRA, Commercial Real Estate - Office - Bengaluru (Grade-A stock, occupancy, regional split)", "url": "https://www.icra.in/Rating/DownloadResearchSummaryReport/6188", "year": "March 2025"},
                 {"id": "bbmp-plants", "name": "BBMP Waste Processing Plants", "url": "https://data.opencity.in/dataset/bbmp-solid-waste-management-data", "year": "c. 2019"},
             ],
         },
         "constants": {**SOURCED, "assumptions": ASSUMPTIONS, "calibration": {
-            "bprAlpha": round(alpha, 4),
             "targetTravelTimeIndex": round(target_tti, 3),
-            "method": "alpha solved so the demand-weighted mean zone travel-time index equals free-flow speed / CMP 2020 observed peak speed (40 / 11 km/h).",
+            "method": "alpha solved by the engine so the demand-weighted mean zone travel-time index equals free-flow speed / CMP 2020 observed peak speed (40 / 11 km/h).",
         }},
         "city": {
             "populationBaseYear": total_pop,
@@ -351,6 +398,8 @@ def main():
             "wasteCollectedTpdMay2020": sum(waste_may.values()),
             "busPeakBusKmPerHr": city_bus_km_hr,
             "goodsPeakVehicles": round(city_goods_veh),
+            "officeClusters": office_clusters,
+            "officeSeatsAddedSince2011Share": round(office_new_share, 3),
         },
         "corridors": [
             {
@@ -365,12 +414,12 @@ def main():
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(dataset, indent=1, ensure_ascii=False), encoding="utf-8")
 
-    print(f"alpha={alpha:.3f} targetTTI={target_tti:.2f}  city pop {total_pop:,}  metro {metro_city:,.0f}/day  unmatched {metro_unmatched}")
-    for zz, (vc, d) in zip(zones, vcs):
-        w = zz["waste"]
-        print(f'{zz["name"]:22} pop {zz["demographics"]["populationBaseYear"]:>9,} V/C {vc:4.2f} TTI {1 + alpha * vc ** A["bprBeta"]:4.2f} spd {A["freeFlowSpeedKmph"] / (1 + alpha * vc ** A["bprBeta"]):4.1f} '
-              f'waste {w["generationTpd"]:6.0f}/{w["processingCapacityTpd"]:6.0f} metro {zz["transit"]["metroDailyBoardings"]:>7,} '
-              f'freight {zz["freight"]["freightDemandTpd"]:>6,} area {zz["areaKm2"]}/{zz["demographics"]["csvAreaKm2"]}')
+    print(f"city pop {total_pop:,}  metro {metro_city:,.0f}/day  unmatched {metro_unmatched}  "
+          f"office seats added since 2011 {sum(office_new.values()):,.0f}")
+    for zz in zones:
+        d = zz["demographics"]
+        print(f'{zz["name"]:22} pop {d["populationBaseYear"]:>9,} jobs2011 {d["jobs2011"]:>9,} +office {d["officeJobsAdded"]:>9,} '
+              f'jobsShare {d["jobsShare"]:.3f} metro {zz["transit"]["metroDailyBoardings"]:>7,} neighbours {zz["neighbours"]}')
 
 
 if __name__ == "__main__":
