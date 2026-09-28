@@ -12,6 +12,7 @@ curl -sSL -o bbmp-waste-processing-plants.csv \
   "https://data.opencity.in/dataset/c904b267-5369-4aee-990c-dc86047fee3c/resource/6179d0e6-d303-4ab9-a9d6-0461677d7dd8/download/0f6b5b34-0b4a-4b26-ba94-5e03ec2f76cb.csv"
 curl -sSL -o bbmp-segregated-waste-collections-2020.csv \
   "https://data.opencity.in/dataset/c904b267-5369-4aee-990c-dc86047fee3c/resource/3fce725f-df30-426e-b526-04c6da3960b1/download/37141692-0898-4ad7-aa87-03fc8e2d9dd4.csv"
+curl -sSL -o bbmp-ward-census-2011.csv \n  "https://data.opencity.in/dataset/e40ab411-c575-4c90-8bde-31bcb8df575f/resource/1f2169ef-727b-486a-941e-fb143c2bfd0d/download/508f9175-f803-4c51-850d-5ef43fe5afe3.csv"
 curl -sSL -o bmrcl-station-hourly.csv.zip \
   "https://raw.githubusercontent.com/Vonter/bmrcl-ridership-hourly/main/data/station-hourly.csv.zip"
 

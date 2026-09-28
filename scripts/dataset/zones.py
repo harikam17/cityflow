@@ -19,16 +19,16 @@ DERIVED = ROOT / "data" / "derived"
 # KML "Zone" attribute -> canonical zone record used throughout the app.
 # csvName is the row name in data/bengaluru-mobility-indicators.csv
 # (Byatarayanapura was the original name of what BBMP now calls Yelahanka zone).
-# wasteName is the zone label in the BBMP waste collection CSV.
+# wasteName is the zone label in the BBMP waste collection CSV; wardZone the label in the ward census CSV.
 ZONES = [
-    {"id": "zone-west", "kml": "West", "name": "West", "csvName": "Bangalore West", "wasteName": "West"},
-    {"id": "zone-east", "kml": "East", "name": "East", "csvName": "Bangalore East", "wasteName": "East"},
-    {"id": "zone-south", "kml": "South", "name": "South", "csvName": "Bangalore South", "wasteName": "South"},
-    {"id": "zone-yelahanka", "kml": "Yelahanka", "name": "Yelahanka", "csvName": "Byatarayanapura", "wasteName": "Yelahanka"},
-    {"id": "zone-mahadevapura", "kml": "Mahadevpura", "name": "Mahadevapura", "csvName": "Mahadevapura", "wasteName": "Mahadevapura"},
-    {"id": "zone-bommanahalli", "kml": "Bommanahalli", "name": "Bommanahalli", "csvName": "Bommanahalli", "wasteName": "Bommanahalli"},
-    {"id": "zone-rrnagar", "kml": "Raja Rajeswari Nagar", "name": "Rajarajeshwari Nagar", "csvName": "Rajarajeshwari Nagara", "wasteName": "RRNagar"},
-    {"id": "zone-dasarahalli", "kml": "Dasarahalli", "name": "Dasarahalli", "csvName": "Dasarahalli", "wasteName": "Dasarahalli"},
+    {"id": "zone-west", "kml": "West", "name": "West", "csvName": "Bangalore West", "wasteName": "West", "wardZone": "West"},
+    {"id": "zone-east", "kml": "East", "name": "East", "csvName": "Bangalore East", "wasteName": "East", "wardZone": "East"},
+    {"id": "zone-south", "kml": "South", "name": "South", "csvName": "Bangalore South", "wasteName": "South", "wardZone": "South"},
+    {"id": "zone-yelahanka", "kml": "Yelahanka", "name": "Yelahanka", "csvName": "Byatarayanapura", "wasteName": "Yelahanka", "wardZone": "Yelahanka"},
+    {"id": "zone-mahadevapura", "kml": "Mahadevpura", "name": "Mahadevapura", "csvName": "Mahadevapura", "wasteName": "Mahadevapura", "wardZone": "Mahadevapura"},
+    {"id": "zone-bommanahalli", "kml": "Bommanahalli", "name": "Bommanahalli", "csvName": "Bommanahalli", "wasteName": "Bommanahalli", "wardZone": "Bommanahalli"},
+    {"id": "zone-rrnagar", "kml": "Raja Rajeswari Nagar", "name": "Rajarajeshwari Nagar", "csvName": "Rajarajeshwari Nagara", "wasteName": "RRNagar", "wardZone": "Rajarajeshwari"},
+    {"id": "zone-dasarahalli", "kml": "Dasarahalli", "name": "Dasarahalli", "csvName": "Dasarahalli", "wasteName": "Dasarahalli", "wardZone": "Dasarahalli"},
 ]
 
 _NS = {"k": "http://www.opengis.net/kml/2.2"}
