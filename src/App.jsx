@@ -1,114 +1,113 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useDeferredValue } from 'react';
 import Header from './components/Header';
 import KpiSummary from './components/KpiSummary';
 import SimulatorControls from './components/SimulatorControls';
 import CityMap from './components/CityMap';
-import ZoneDetailsModal from './components/ZoneDetailsModal';
+import ZoneInspector from './components/ZoneInspector';
 import ScenarioImpact from './components/ScenarioImpact';
 import Recommendations from './components/Recommendations';
 import DataProvenance from './components/DataProvenance';
-import { BASELINE_ZONES, SIMULATED_CITY_METADATA } from './data/baselineCity';
-import { calculateCitySimulation } from './engine/simulationEngine';
+import { CITY_DATASET } from './data/cityData';
+import { calculateCitySimulation, calculateSensitivity, SCENARIO_DEFAULTS } from './engine/simulationEngine';
 import { generatePolicyRecommendations } from './engine/recommendations';
-
-const BASELINE_SCENARIO = {
-  privateVehicleModifier: 1.0,
-  publicTransitModifier: 1.0,
-  deliveryFreightModifier: 1.0,
-  closedCorridorId: null
-};
+import { scenarioFromQuery, scenarioToQuery } from './utils/scenarioUrl';
 
 export default function App() {
-  const [scenario, setScenario] = useState(BASELINE_SCENARIO);
+  const [scenario, setScenario] = useState(() => scenarioFromQuery(window.location.search));
   const [selectedZoneId, setSelectedZoneId] = useState(null);
+  const [copied, setCopied] = useState(false);
 
-  // 1. Separate baseline simulation calculation (Single source of truth)
-  const baselineResult = useMemo(() => {
-    return calculateCitySimulation(BASELINE_ZONES, BASELINE_SCENARIO);
-  }, []);
-
-  // 2. Current scenario simulation calculation
-  const currentResult = useMemo(() => {
-    return calculateCitySimulation(BASELINE_ZONES, scenario);
+  // Keep the address bar in sync so the current scenario is always a shareable link
+  useEffect(() => {
+    window.history.replaceState(null, '', `${window.location.pathname}${scenarioToQuery(scenario)}`);
   }, [scenario]);
 
-  // 3. Deterministic recommendations derived from baseline vs scenario deltas
-  const recommendations = useMemo(() => {
-    return generatePolicyRecommendations(baselineResult, currentResult, scenario);
-  }, [baselineResult, currentResult, scenario]);
+  const baselineResult = useMemo(() => calculateCitySimulation(CITY_DATASET, SCENARIO_DEFAULTS), []);
+  const currentResult = useMemo(() => calculateCitySimulation(CITY_DATASET, scenario), [scenario]);
 
-  // 4. Currently selected zone
-  const selectedZone = useMemo(() => {
-    if (!selectedZoneId) return null;
-    return currentResult.zones.find((z) => z.id === selectedZoneId) || null;
-  }, [currentResult, selectedZoneId]);
+  // The solver behind the recommendations and the sensitivity runs re-simulate many times;
+  // let them lag a frame behind the sliders instead of blocking them.
+  const deferredScenario = useDeferredValue(scenario);
+  const recommendations = useMemo(
+    () =>
+      generatePolicyRecommendations(
+        CITY_DATASET,
+        baselineResult,
+        calculateCitySimulation(CITY_DATASET, deferredScenario),
+        deferredScenario
+      ),
+    [baselineResult, deferredScenario]
+  );
+  const sensitivity = useMemo(() => calculateSensitivity(CITY_DATASET, deferredScenario), [deferredScenario]);
 
-  const handleResetScenario = () => {
-    setScenario(BASELINE_SCENARIO);
+  const selectedZone = selectedZoneId ? currentResult.zones.find((z) => z.id === selectedZoneId) ?? null : null;
+
+  const handleSelectZone = (zoneId) => setSelectedZoneId((prev) => (prev === zoneId ? null : zoneId));
+
+  // Popup "inspect" action: always selects (never toggles off) and brings the inspector into view
+  const handleInspectZone = (zoneId) => {
+    setSelectedZoneId(zoneId);
+    requestAnimationFrame(() => {
+      document.getElementById('zone-inspector')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   };
 
-  const handleSelectZone = (zoneId) => {
-    setSelectedZoneId((prev) => (prev === zoneId ? null : zoneId));
-  };
-
-  const handleCloseInspector = () => {
-    setSelectedZoneId(null);
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
   };
 
   return (
     <div className="app-container">
-      <Header />
+      <Header onCopyLink={handleCopyLink} copied={copied} onPrint={() => window.print()} />
 
       <main className="main-content">
-        {/* Modelled Environment & Data Provenance Notice */}
-        <div className="disclaimer-banner" role="region" aria-label="Simulation notice">
-          <span className="badge badge-info">BENGALURU MOBILITY BASELINE</span>
+        <div className="disclaimer-banner" role="region" aria-label="About this simulator">
+          <span className="badge badge-info">BENGALURU · {CITY_DATASET.meta.baseYear} MORNING PEAK</span>
           <span className="disclaimer-text">
-            <strong>Source: bengaluru-mobility-indicators.csv</strong> — Passenger mobility indicators are based on the supplied dataset. Road, freight, waste and map geometry inputs remain modelled unless separately sourced ({SIMULATED_CITY_METADATA.cityName}).
+            Change a lever and see how roads, delivery fleets and waste processing respond in each of the 8 BBMP zones.
+            100% means demand equals capacity. The model starts from public data (census, travel survey,
+            OpenStreetMap roads, office stock, metro ridership, BBMP waste) and reproduces today's observed 11 km/h peak speed.
           </span>
         </div>
 
-        {/* City-Wide KPI Summary */}
-        <KpiSummary citySummary={currentResult.citySummary} />
+        <KpiSummary
+          citySummary={currentResult.citySummary}
+          sensitivity={sensitivity}
+          observedPeakSpeedKmph={CITY_DATASET.constants.observedPeakSpeedKmph.private}
+        />
 
-        {/* Core Operational Grid: Map & Controls */}
         <div className="dashboard-grid">
           <SimulatorControls
             scenario={scenario}
             onChangeScenario={setScenario}
-            onResetScenario={handleResetScenario}
+            onResetScenario={() => setScenario(SCENARIO_DEFAULTS)}
           />
           <CityMap
             zones={currentResult.zones}
             selectedZoneId={selectedZoneId}
             onSelectZone={handleSelectZone}
+            onInspectZone={handleInspectZone}
           />
         </div>
 
-        {/* Selected Zone Inspector Panel (Contextual) */}
         {selectedZone && (
-          <div className="inspector-container">
-            <ZoneDetailsModal
-              zone={selectedZone}
-              onClose={handleCloseInspector}
-            />
+          <div id="zone-inspector" className="inspector-container">
+            <ZoneInspector zone={selectedZone} onClose={() => setSelectedZoneId(null)} />
           </div>
         )}
 
-        {/* Phase 4 & 5: Scenario Impact (Table, Chart, Zone Comparison, Active Scenario) */}
-        <ScenarioImpact
-          baselineResult={baselineResult}
-          currentResult={currentResult}
-          scenario={scenario}
-        />
-
-        {/* Phase 4: Rule-Based Policy Recommendations */}
         <Recommendations recommendations={recommendations} />
 
-        {/* Real Data Provenance & Model Separation Section */}
+        <ScenarioImpact baselineResult={baselineResult} currentResult={currentResult} scenario={scenario} />
+
         <DataProvenance />
       </main>
     </div>
   );
 }
-

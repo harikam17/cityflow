@@ -1,14 +1,15 @@
 import React from 'react';
 import { MapContainer, TileLayer, Polygon, CircleMarker, Popup, Tooltip } from 'react-leaflet';
-import { getPressureSeverity, getSeverityLabel, getSeverityColor, formatPressureScore } from '../utils/formatters';
+import { getPressureSeverity, getSeverityLabel, getSeverityColor, formatPressureScore, PRESSURE_THRESHOLDS } from '../utils/formatters';
 
 export default function CityMap({
   zones = [],
   selectedZoneId,
-  onSelectZone
+  onSelectZone,
+  onInspectZone
 }) {
-  const mapCenter = [12.960, 77.615];
-  const defaultZoom = 12;
+  const mapCenter = [12.970, 77.590];
+  const defaultZoom = 11;
 
   return (
     <section aria-labelledby="city-map-heading" className="panel city-map-panel">
@@ -18,9 +19,9 @@ export default function CityMap({
           <span className="panel-subtitle">Select a zone on the map to inspect localized subsystem metrics</span>
         </div>
         <div className="map-legend" aria-label="Map pressure legend">
-          <span className="legend-item"><span className="legend-color safe"></span> Safe (&lt;45)</span>
-          <span className="legend-item"><span className="legend-color moderate"></span> Moderate (45–70)</span>
-          <span className="legend-item"><span className="legend-color critical"></span> Critical (&gt;70)</span>
+          <span className="legend-item"><span className="legend-color safe"></span> Within capacity (&lt;{PRESSURE_THRESHOLDS.moderate}%)</span>
+          <span className="legend-item"><span className="legend-color moderate"></span> Near capacity ({PRESSURE_THRESHOLDS.moderate}–{PRESSURE_THRESHOLDS.critical}%)</span>
+          <span className="legend-item"><span className="legend-color critical"></span> Over capacity (&gt;{PRESSURE_THRESHOLDS.critical}%)</span>
         </div>
       </div>
 
@@ -63,7 +64,9 @@ export default function CityMap({
                       <div className="map-tooltip-content">
                         <strong>{zone.name}</strong>
                         <br />
-                        Pressure: {formatPressureScore(zone.overallPressure)}/100 ({severityLabel})
+                        Overall: {formatPressureScore(zone.overallPressure)} ({severityLabel})
+                        <br />
+                        Peak speed: {zone.peakSpeedKmph} km/h
                         {zone.isCorridorClosed && <span className="tooltip-closure-tag"><br />⚠️ Road Closure Active</span>}
                       </div>
                     </Tooltip>
@@ -115,9 +118,9 @@ export default function CityMap({
                         <button
                           type="button"
                           className="btn btn-sm btn-primary popup-inspect-btn"
-                          onClick={() => onSelectZone(zone.id)}
+                          onClick={() => onInspectZone(zone.id)}
                         >
-                          {isSelected ? 'Viewing Details Below' : 'Inspect Zone Details'}
+                          {isSelected ? 'Jump to Zone Details' : 'Inspect Zone Details'}
                         </button>
                       </div>
                     </Popup>

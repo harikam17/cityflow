@@ -108,7 +108,13 @@
 @media (min-width: 1024px) {
   .dashboard-grid {
     grid-template-columns: 380px 1fr;
-    align-items: start;
+    align-items: stretch;
+  }
+
+  /* Controls scroll inside a fixed height; the map stretches to match it */
+  .dashboard-grid .simulator-controls {
+    max-height: 820px;
+    overflow-y: auto;
   }
 }
 

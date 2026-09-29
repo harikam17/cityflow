@@ -154,6 +154,34 @@
   border: 1px solid var(--color-status-info);
 }
 
+/* Data provenance tags (zone inspector) */
+.prov-tag {
+  display: inline-block;
+  margin-left: var(--space-1);
+  padding: 0 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+  border: 1px solid transparent;
+}
+
+.prov-measured {
+  color: #6ee7b7;
+  border-color: var(--color-status-safe);
+}
+
+.prov-derived {
+  color: #bfdbfe;
+  border-color: var(--color-status-info);
+}
+
+.prov-estimated {
+  color: #fcd34d;
+  border-color: var(--color-status-moderate);
+}
+
 /* KPI Cards */
 .kpi-card {
   padding: var(--space-3) var(--space-4);
@@ -588,7 +616,7 @@
   color: var(--color-text-primary);
 }
 
-/* Phase 4 & 5: Scenario Impact Section */
+/* Scenario Impact Section */
 .scenario-impact-section {
   margin-bottom: var(--space-5);
 }
@@ -728,7 +756,7 @@
   border-radius: 2px;
 }
 
-/* Phase 4 & 5: Recommendations Section */
+/* Recommendations Section */
 .recommendations-section {
   margin-bottom: var(--space-5);
 }
@@ -814,5 +842,53 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* Assumption sensitivity range under each KPI */
+.kpi-range {
+  margin-top: 4px;
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.lever-group {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--color-border);
+  padding-top: 12px;
+}
+
+.lever-group legend {
+  padding: 0;
+  margin-bottom: 8px;
+}
+
+.rec-title {
+  font-weight: 600;
+  margin: 6px 0 4px;
+}
+
+/* Print briefing: controls and map chrome are dropped, results kept */
+@media print {
+  .no-print,
+  .simulator-controls,
+  .leaflet-control-container {
+    display: none !important;
+  }
+  .dashboard-grid {
+    display: block;
+  }
+  .panel {
+    break-inside: avoid;
+    box-shadow: none;
   }
 }

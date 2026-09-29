@@ -1,18 +1,17 @@
 /**
  * CityFlow Metric and String Formatters
+ *
+ * Pressure indices are utilisation percentages (100 = demand equals capacity).
  */
 
-export function formatPressureScore(score) {
-  if (typeof score !== 'number' || isNaN(score)) return '0.0';
-  return score.toFixed(1);
-}
+export const PRESSURE_THRESHOLDS = {
+  moderate: 80, // approaching capacity
+  critical: 100 // over capacity
+};
 
-export function formatDelta(baseline, simulated) {
-  if (typeof baseline !== 'number' || typeof simulated !== 'number') return '+0.0%';
-  const diff = simulated - baseline;
-  const pct = baseline > 0 ? (diff / baseline) * 100 : 0;
-  const sign = pct >= 0 ? '+' : '';
-  return `${sign}${pct.toFixed(1)}%`;
+export function formatPressureScore(score) {
+  if (typeof score !== 'number' || isNaN(score)) return '0.0%';
+  return `${score.toFixed(1)}%`;
 }
 
 export function formatDeltaValue(baseline, current) {
@@ -24,16 +23,16 @@ export function formatDeltaValue(baseline, current) {
 }
 
 export function getPressureSeverity(score) {
-  if (score < 45) return 'safe';
-  if (score <= 70) return 'moderate';
+  if (score < PRESSURE_THRESHOLDS.moderate) return 'safe';
+  if (score <= PRESSURE_THRESHOLDS.critical) return 'moderate';
   return 'critical';
 }
 
 export function getSeverityLabel(score) {
   const severity = getPressureSeverity(score);
-  if (severity === 'safe') return 'Safe';
-  if (severity === 'moderate') return 'Moderate';
-  return 'Critical';
+  if (severity === 'safe') return 'Within capacity';
+  if (severity === 'moderate') return 'Near capacity';
+  return 'Over capacity';
 }
 
 export function getSeverityColor(score) {
@@ -45,5 +44,5 @@ export function getSeverityColor(score) {
 
 export function formatNumber(val) {
   if (typeof val !== 'number' || isNaN(val)) return '0';
-  return val.toLocaleString();
+  return Math.round(val).toLocaleString('en-IN');
 }
