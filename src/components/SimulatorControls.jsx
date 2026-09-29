@@ -1,5 +1,5 @@
 import React from 'react';
-import { PRESET_SCENARIOS, AVAILABLE_CORRIDORS } from '../data/presetScenarios';
+import { PRESET_SCENARIOS, AVAILABLE_CORRIDORS, findMatchingPreset } from '../data/presetScenarios';
 
 export default function SimulatorControls({
   scenario = {},
@@ -14,14 +14,7 @@ export default function SimulatorControls({
   } = scenario;
 
   // Identify active preset if scenario matches exactly
-  const activePreset = PRESET_SCENARIOS.find((preset) => {
-    return (
-      Math.abs(preset.inputs.privateVehicleModifier - privateVehicleModifier) < 0.001 &&
-      Math.abs(preset.inputs.publicTransitModifier - publicTransitModifier) < 0.001 &&
-      Math.abs(preset.inputs.deliveryFreightModifier - deliveryFreightModifier) < 0.001 &&
-      preset.inputs.closedCorridorId === closedCorridorId
-    );
-  });
+  const activePreset = findMatchingPreset(scenario);
 
   const handleSliderChange = (field, value) => {
     onChangeScenario({

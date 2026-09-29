@@ -75,7 +75,7 @@ export default function ZoneDetailsModal({ zone, onClose }) {
                 </div>
                 <div className="data-row">
                   <span className="data-label">Average Trip Length:</span>
-                  <span className="data-value tabular-nums">{mobility.avgTripLengthKm} km</span>
+                  <span className="data-value tabular-nums">{mobility.averageTripLengthKm} km</span>
                 </div>
                 <div className="data-row">
                   <span className="data-label">Short Trips (&lt;15m / &lt;30m):</span>

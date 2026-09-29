@@ -30,7 +30,7 @@ export const PRESET_SCENARIOS = [
   {
     id: "preset-transit-disruption",
     name: "Transit Service Disruption",
-    description: "50% reduction in public transit frequency shifting commuters into private cars and ride-hails.",
+    description: "50% reduction in public transit frequency shifting commuters into private cars and ride-hails, compounded by closure of the East-Central Arterial Flyover.",
     inputs: {
       privateVehicleModifier: 1.45,
       publicTransitModifier: 0.5,
@@ -55,3 +55,15 @@ export const AVAILABLE_CORRIDORS = [
   { id: "corridor-east-central", name: "East-Central Arterial Flyover" },
   { id: "corridor-tech-orr", name: "Mahadevapura Outer Ring Road Express Lane" }
 ];
+
+/**
+ * Returns the preset whose inputs exactly match the given scenario, or undefined.
+ */
+export function findMatchingPreset(scenario = {}) {
+  return PRESET_SCENARIOS.find((preset) => (
+    Math.abs(preset.inputs.privateVehicleModifier - (scenario.privateVehicleModifier ?? 1.0)) < 0.001 &&
+    Math.abs(preset.inputs.publicTransitModifier - (scenario.publicTransitModifier ?? 1.0)) < 0.001 &&
+    Math.abs(preset.inputs.deliveryFreightModifier - (scenario.deliveryFreightModifier ?? 1.0)) < 0.001 &&
+    preset.inputs.closedCorridorId === (scenario.closedCorridorId || null)
+  ));
+}
